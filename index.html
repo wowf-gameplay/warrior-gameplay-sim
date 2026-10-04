@@ -130,7 +130,7 @@
     font-weight: 700; font-size: 14px; text-shadow: 1px 1px 2px #000; font-variant-numeric: tabular-nums;
   }
 
-  #bar { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; margin-top: 12px; }
+  #bar { display: grid; grid-template-columns: repeat(11, 1fr); gap: 6px; margin-top: 12px; }
   .slot { text-align: center; font-size: 10px; color: #b9ad92; line-height: 1.2; }
   .ability {
     position: relative; display: block; width: 100%; aspect-ratio: 1; margin-bottom: 3px;
@@ -174,6 +174,20 @@
   td { padding: 5px 8px; border-bottom: 1px solid #2b2318; vertical-align: middle; }
   td.dim, .dim { color: #8f846e; }
   .q-epic { color: #a335ee; font-weight: 600; } .q-rare { color: #0070dd; font-weight: 600; }
+  .custom-toggle { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .custom-toggle input { accent-color: #ffd100; width: 16px; height: 16px; }
+  .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
+  .fields label { font-size: 12px; color: #b9ad92; display: flex; flex-direction: column; gap: 3px; }
+  .fields input {
+    padding: 6px 8px; font: inherit; font-size: 15px; font-weight: 700; background: #1b1611; color: #ffd100;
+    border: 1px solid #6b5a3a; border-radius: 4px; width: 100%;
+  }
+  .fields.off { opacity: .45; }
+  .plain-btn {
+    font: inherit; font-size: 12px; font-weight: 600; padding: 5px 12px; margin-top: 10px; cursor: pointer;
+    background: #3a2c1e; color: #e8dcc0; border: 1px solid #6b5a3a; border-radius: 4px;
+  }
+  .plain-btn:hover { border-color: #c79c6e; }
   .tab h2 { font-size: 15px; color: #c79c6e; margin: 18px 0 0; }
   .statgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; margin-top: 10px; }
   .stat { background: #1b1611; border: 1px solid #3a2f20; border-radius: 4px; padding: 6px 10px; font-size: 12px; color: #b9ad92; }
@@ -210,6 +224,18 @@
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     font-size: 16px; font-weight: 800; color: #fff; text-shadow: 1px 1px 2px #000; pointer-events: none;
   }
+  #keybar { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: #b9ad92; }
+  #keybar button {
+    font: inherit; font-size: 12px; font-weight: 600; padding: 4px 10px; cursor: pointer;
+    background: #3a2c1e; color: #e8dcc0; border: 1px solid #6b5a3a; border-radius: 4px;
+  }
+  #keybar button:hover { border-color: #c79c6e; }
+  #keybar button.active { background: #ffd100; color: #14110e; border-color: #ffd100; }
+  #rebind-hint.warn { color: #ff7a6b; font-weight: 700; }
+  #rebind-reset { display: none; }
+  #keybar.editing #rebind-reset { display: inline-block; }
+  #bar.editing .ability { filter: none; border-style: dashed; border-color: #c79c6e; }
+  #bar.editing .ability.rebind-target { border-style: solid; border-color: #40bf40; box-shadow: 0 0 10px #40bf40; }
   .ability.norage { filter: grayscale(.8) brightness(.6); }
   .ability.queued { border-color: #ffe100; box-shadow: 0 0 10px #ffe100, inset 0 0 10px rgba(255,225,0,.4); }
   .ability.denied { animation: denied .2s; }
@@ -236,6 +262,7 @@
     <button data-tab="combat" class="active">Combat</button>
     <button data-tab="gear">Gear</button>
     <button data-tab="talents">Talents</button>
+    <button data-tab="stats">Stats</button>
   </nav>
 
   <div id="tab-combat" class="tab active">
@@ -274,6 +301,11 @@
 
   <div id="ragebar"><div id="ragefill"></div><div id="ragetext"></div></div>
   <div id="bar"></div>
+  <div id="keybar">
+    <button id="rebind">Change keybinds</button>
+    <button id="rebind-reset">Reset keybinds</button>
+    <span id="rebind-hint"></span>
+  </div>
   <div id="log"></div>
   <button class="reset">Reset</button>
   <footer id="footer"></footer>
@@ -281,6 +313,7 @@
 
   <div id="tab-gear" class="tab"></div>
   <div id="tab-talents" class="tab"></div>
+  <div id="tab-stats" class="tab"></div>
 </div>
 
 <script>
@@ -318,11 +351,28 @@ const GEAR = [
 const gearSum = k => GEAR.reduce((n, g) => n + (g[k] || 0) + (g.ench?.[k] || 0), 0);
 const STATS = { str: BASE.str + gearSum('str'), agi: BASE.agi + gearSum('agi') };
 
+// Unbuffed character-sheet stats from the gear list (talents and Berserker Stance included in crit)
+function gearSheet() {
+  const str = BASE.str + gearSum('str'), agi = BASE.agi + gearSum('agi');
+  const mh = GEAR.find(g => g.slot === 'Main hand').weapon, oh = GEAR.find(g => g.slot === 'Off hand').weapon;
+  return {
+    str, agi,
+    ap: BASE.ap + 2 * str + gearSum('ap'),   // 2 AP per Strength
+    // 20 Agility per 1% crit, +5% Cruelty, +3% Berserker Stance, +2% Human Sword Specialization with a sword equipped
+    crit: +(agi / 20 + gearSum('critRating') / CRIT_RATING_PER_PCT + 5 + 3 +
+      (BASE.race === 'Human' && GEAR.some(g => g.weapon?.type === 'Sword') ? 2 : 0)).toFixed(2),
+    hit: gearSum('hitRating') / HIT_RATING_PER_PCT,
+    mhMin: mh.min, mhMax: mh.max, mhSpeed: mh.speed, ohMin: oh.min, ohMax: oh.max, ohSpeed: oh.speed,
+  };
+}
+// Custom stats (Stats tab): when on, these replace the gear-derived sheet; buffs still apply on top
+const CUSTOM = { on: false, ...gearSheet() };
+const CUSTOM_STORE = 'warriorSimCustomStats';
+try { Object.assign(CUSTOM, JSON.parse(localStorage.getItem(CUSTOM_STORE) || '{}')); } catch {}
+
 const CFG = {
   ap: 0, crit: 0, windfury: false,   // set by applySetup()
-  hit: gearSum('hitRating') / HIT_RATING_PER_PCT,
-  mh: GEAR.find(g => g.slot === 'Main hand').weapon,
-  oh: GEAR.find(g => g.slot === 'Off hand').weapon,
+  hit: 0, mh: null, oh: null,        // set by applySetup()
   targetHp: 75000,     // dummy health; a fresh dummy appears when it dies
   executeRange: 0.2,   // Execute usable at or below 20% health
   bossArmor: 3731,     // level 63 boss, before debuffs
@@ -402,15 +452,16 @@ function applySetup() {
   const mult = on('kings') ? 1.1 : 1;
   const str = (on('gotw') ? 16 : 0) + (on('soe') ? 53 : 0) + (on('jujupower') ? 30 : 0) + (on('roids') ? 25 : 0) + (on('dumplings') ? 20 : 0);
   const agi = (on('gotw') ? 16 : 0) + (on('goa') ? 89 : 0) + (on('mongoose') ? 25 : 0);
-  STATS.str = Math.round((BASE.str + gearSum('str') + str) * mult);
-  STATS.agi = Math.round((BASE.agi + gearSum('agi') + agi) * mult);
-  // 2 AP per Strength
-  CFG.ap = BASE.ap + 2 * STATS.str + gearSum('ap') + (on('shout') ? BATTLE_SHOUT_AP : 0) + (on('might') ? 133 : 0) + (on('jujumight') ? 40 : 0);
-  // 20 Agility per 1% crit, +5% Cruelty, +3% Berserker Stance
-  CFG.crit = STATS.agi / 20 + gearSum('critRating') / CRIT_RATING_PER_PCT + 5 + 3 +
-    (on('lotp') ? 3 : 0) + (on('mongoose') ? 2 : 0) + (on('stones') ? 4 : 0) +
-    // Human racial Sword Specialization: +2% crit while a sword is equipped in either hand
-    (BASE.race === 'Human' && GEAR.some(g => g.weapon?.type === 'Sword') ? 2 : 0);
+  const sheet = CUSTOM.on ? CUSTOM : gearSheet();
+  STATS.str = Math.round((sheet.str + str) * mult);
+  STATS.agi = Math.round((sheet.agi + agi) * mult);
+  // Buffs add on top of the sheet: 2 AP per Strength gained, 1% crit per 20 Agility gained
+  CFG.ap = Math.round(sheet.ap + 2 * (STATS.str - sheet.str) + (on('shout') ? BATTLE_SHOUT_AP : 0) + (on('might') ? 133 : 0) + (on('jujumight') ? 40 : 0));
+  CFG.crit = sheet.crit + (STATS.agi - sheet.agi) / 20 +
+    (on('lotp') ? 3 : 0) + (on('mongoose') ? 2 : 0) + (on('stones') ? 4 : 0);
+  CFG.hit = sheet.hit;
+  CFG.mh = { min: sheet.mhMin, max: sheet.mhMax, speed: sheet.mhSpeed };
+  CFG.oh = { min: sheet.ohMin, max: sheet.ohMax, speed: sheet.ohSpeed };
   CFG.crusaderAp = Math.round(200 * mult);
   CFG.ragePotionAp = Math.round(120 * mult);
   CFG.windfury = on('wf');
@@ -616,6 +667,9 @@ const ABILITIES = [
       S.overpowerUntil = 0;
       yellowAttack(this.name, weaponRoll(CFG.mh, 2.4) + 35, this.cost, false, false, { noDodge: true, critBonus: CFG.overpowerCrit });
     } },
+  { id: 'hamstring', name: 'Hamstring', icon: 'ability_shockwave', key: '-', cost: 10, cd: 0, gcd: true,
+    desc: 'Deals 45 damage. Cheap instant attack that can trigger weapon procs, Flurry and Deep Wounds.',
+    use() { yellowAttack(this.name, 45, this.cost, true); } },
   { id: 'brage', name: 'Berserker Rage', icon: 'spell_nature_ancestralguardian', key: '6', cost: 0, cd: 30, gcd: true, stance: 'berserker',
     desc: 'Fear immunity and extra rage when taking damage for 10 sec. Generates no rage here: Improved Berserker Rage is not taken and you take no damage.',
     use() { S.buffs.brage = S.t + 10; log('<span class="r">You gain Berserker Rage.</span>'); } },
@@ -746,11 +800,12 @@ for (const a of ABILITIES) {
   el.className = 'ability';
   el.title = `${a.name}\n${a.cost ? a.cost + ' rage' : 'No cost'}${a.cd ? ' · ' + fmtTime(a.cd) + (a.cd >= 60 ? ' min' : ' sec') + ' cooldown' : ''}\n${a.desc}`;
   el.style.backgroundImage = `url(${iconUrl(a.icon)})`;
-  el.innerHTML = `<span class="key">${a.key}</span>` +
+  el.innerHTML = `<span class="key"></span>` +
     (a.cost ? `<span class="cost">${a.cost}</span>` : '') +
     `<div class="cdmask"></div><div class="cdtext"></div>`;
-  el.addEventListener('click', () => press(a));
+  el.addEventListener('click', () => { if (rebinding) selectRebind(a); else press(a); });
   a.el = el; a.mask = el.querySelector('.cdmask'); a.cdText = el.querySelector('.cdtext');
+  a.keyEl = el.querySelector('.key'); a.defaultKey = a.key;
   const slot = document.createElement('div');
   slot.className = 'slot';
   slot.append(el, a.name);
@@ -826,6 +881,7 @@ function renderGearTab() {
     : `<tr><td class="dim">${g.slot}</td><td></td><td class="dim">Empty</td><td></td></tr>`;
   const active = [...RAID_BUFFS, ...CONSUMABLES].filter(b => b.on).map(b => b.name).join(', ') || 'none';
   $('tab-gear').innerHTML =
+    (CUSTOM.on ? `<h2>Custom stats are active (Stats tab): the gear below is not used for stats.</h2>` : '') +
     `<div class="statgrid">` +
       stat('Attack power (buffed)', CFG.ap) +
       stat('Crit chance (Berserker Stance)', CFG.crit.toFixed(2) + '%') +
@@ -841,6 +897,55 @@ function renderGearTab() {
 }
 renderGearTab();
 
+// --- Stats tab: custom character stats, independent of the gear list ---
+function renderResultStats() {
+  const stat = (label, value) => `<div class="stat"><b>${value}</b>${label}</div>`;
+  $('stats-result').innerHTML =
+    stat('Attack power (buffed)', CFG.ap) + stat('Crit chance (buffed)', CFG.crit.toFixed(2) + '%') +
+    stat('Hit chance', '+' + CFG.hit + '%') + stat('Strength (buffed)', STATS.str) + stat('Agility (buffed)', STATS.agi);
+}
+{
+  const FIELDS = [
+    ['str', 'Strength', 1, 0, 2000], ['agi', 'Agility', 1, 0, 2000], ['ap', 'Attack power', 1, 0, 10000],
+    ['crit', 'Crit chance %', 0.01, 0, 100], ['hit', 'Hit chance %', 0.1, 0, 50],
+    ['mhMin', 'Main hand min damage', 1, 1, 2000], ['mhMax', 'Main hand max damage', 1, 1, 2000], ['mhSpeed', 'Main hand speed', 0.1, 1, 4],
+    ['ohMin', 'Off hand min damage', 1, 1, 2000], ['ohMax', 'Off hand max damage', 1, 1, 2000], ['ohSpeed', 'Off hand speed', 0.1, 1, 4],
+  ];
+  const tab = $('tab-stats');
+  tab.innerHTML =
+    `<label class="custom-toggle"><input type="checkbox" id="custom-on"> Use custom stats instead of the gear list</label>` +
+    `<div class="fields" id="custom-fields">` +
+    FIELDS.map(([k, label, step, min, max]) =>
+      `<label>${label}<input type="number" data-k="${k}" step="${step}" min="${min}" max="${max}"></label>`).join('') +
+    `</div>` +
+    `<button class="plain-btn" id="custom-copy">Copy current gear into the fields</button>` +
+    `<h2>Resulting stats in the sim</h2><div class="statgrid" id="stats-result"></div>` +
+    `<footer>Enter your unbuffed character-sheet values: attack power including the part from Strength, and crit as shown in Berserker Stance with talents. Raid buffs and consumables from the left panel are added on top; Strength and Agility are only used to work out what those buffs add. Weapon procs (Crusader, Ironfoe) and talents stay as they are. Changes apply immediately and are saved in this browser.</footer>`;
+
+  const fill = () => {
+    $('custom-on').checked = CUSTOM.on;
+    $('custom-fields').classList.toggle('off', !CUSTOM.on);
+    tab.querySelectorAll('input[data-k]').forEach(el => { el.value = CUSTOM[el.dataset.k]; });
+  };
+  const apply = () => {
+    try { localStorage.setItem(CUSTOM_STORE, JSON.stringify(CUSTOM)); } catch {}
+    $('custom-fields').classList.toggle('off', !CUSTOM.on);
+    applySetup(); renderGearTab(); renderResultStats();
+  };
+  $('custom-on').addEventListener('change', e => { CUSTOM.on = e.target.checked; apply(); });
+  $('custom-fields').addEventListener('input', e => {
+    const f = FIELDS.find(f => f[0] === e.target.dataset.k);
+    const v = Number(e.target.value);
+    if (!f || e.target.value === '' || !Number.isFinite(v)) return;
+    CUSTOM[f[0]] = Math.min(f[4], Math.max(f[3], v));
+    apply();
+  });
+  $('custom-fields').addEventListener('change', fill);   // show the clamped value once editing is done
+  $('custom-copy').addEventListener('click', () => { Object.assign(CUSTOM, gearSheet()); fill(); apply(); });
+  fill();
+  renderResultStats();
+}
+
 // --- Setup panel: raid buffs, consumables, boss debuffs ---
 {
   const panel = $('buffpanel');
@@ -853,7 +958,7 @@ renderGearTab();
         `<img src="${iconUrl(b.icon)}" alt=""><span><b>${b.name}</b><small>${b.desc}</small></span></label>`).join('') +
       `</section>`).join('');
   };
-  const changed = () => { applySetup(); draw(); renderGearTab(); };
+  const changed = () => { applySetup(); draw(); renderGearTab(); renderResultStats(); };
   panel.addEventListener('change', e => {
     ALL_TOGGLES.find(b => b.id === e.target.dataset.id).on = e.target.checked;
     changed();
@@ -962,15 +1067,96 @@ renderGearTab();
     `"No effect here" means the talent is taken but does nothing in this simulation.</footer>`;
 }
 
+// --- Keybinds: editable, saved in this browser ---
+const KEY_STORE = 'warriorSimKeybinds';
+let rebinding = false, rebindTarget = null;
+// Browser shortcuts a page cannot take over: binding them would close or open tabs instead of using the ability
+const RESERVED_KEYS = ['Ctrl+w', 'Ctrl+t', 'Ctrl+n', 'Ctrl+Shift+w', 'Ctrl+Shift+t', 'Ctrl+Shift+n'];
+const RESERVED_NOTE = 'Ctrl+W, Ctrl+T and Ctrl+N belong to the browser and cannot be used.';
+// A binding is the physical key plus optional Ctrl / Shift, e.g. "q", "Shift+1", "Ctrl+Shift+e".
+// The base key comes from e.code so Shift+1 stays "1" instead of becoming "!".
+const CODE_KEYS = {
+  Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Backquote: '`', Semicolon: ';', Quote: "'",
+  Comma: ',', Period: '.', Slash: '/', Backslash: '\\', Space: ' ',
+};
+function baseKey(e) {
+  const c = e.code || '';
+  if (/^Digit\d$/.test(c)) return c.slice(5);
+  if (/^Key[A-Z]$/.test(c)) return c.slice(3).toLowerCase();
+  if (/^Numpad\d$/.test(c)) return 'Num' + c.slice(6);
+  if (CODE_KEYS[c]) return CODE_KEYS[c];
+  return e.key.length === 1 ? e.key.toLowerCase() : e.key;
+}
+const normKey = e => (e.ctrlKey ? 'Ctrl+' : '') + (e.shiftKey ? 'Shift+' : '') + baseKey(e);
+function keyLabel(k) {
+  if (!k) return '';
+  const parts = k.split(/\+(?=.)/);          // keeps a trailing "+" key intact
+  const base = parts.pop();
+  const mods = parts.map(m => m[0]).join('');  // Ctrl -> C, Shift -> S
+  const name = base === ' ' ? 'Spc' : base.length === 1 ? base.toUpperCase() : base.replace('Arrow', '').slice(0, 4);
+  return (mods ? mods + '-' : '') + name;
+}
+
+function showKeys() {
+  for (const a of ABILITIES) a.keyEl.textContent = keyLabel(a.key);
+}
+function saveKeys() {
+  try { localStorage.setItem(KEY_STORE, JSON.stringify(Object.fromEntries(ABILITIES.map(a => [a.id, a.key])))); } catch {}
+}
+function selectRebind(a) {
+  rebindTarget = a;
+  for (const b of ABILITIES) b.el.classList.toggle('rebind-target', b === a);
+  $('rebind-hint').classList.remove('warn');
+  $('rebind-hint').textContent = a ? `Press a key for ${a.name}, with Shift or Ctrl if you like (Esc to cancel). ${RESERVED_NOTE}`
+    : `Click an ability, then press the key you want. ${RESERVED_NOTE}`;
+}
+function setRebinding(on) {
+  rebinding = on;
+  $('bar').classList.toggle('editing', on);
+  $('keybar').classList.toggle('editing', on);
+  $('rebind').classList.toggle('active', on);
+  $('rebind').textContent = on ? 'Done' : 'Change keybinds';
+  selectRebind(null);
+  if (!on) $('rebind-hint').textContent = '';
+}
+$('rebind').addEventListener('click', () => setRebinding(!rebinding));
+$('rebind-reset').addEventListener('click', () => {
+  for (const a of ABILITIES) a.key = a.defaultKey;
+  saveKeys(); showKeys(); selectRebind(null);
+});
+
+try {
+  const saved = JSON.parse(localStorage.getItem(KEY_STORE) || '{}');
+  for (const a of ABILITIES) if (typeof saved[a.id] === 'string') a.key = saved[a.id];
+} catch {}
+showKeys();
+
 document.addEventListener('keydown', e => {
-  if (e.repeat || e.ctrlKey || e.altKey || e.metaKey) return;
-  const a = ABILITIES.find(a => a.key === e.key);
-  if (a) press(a);
+  if (e.repeat || e.altKey || e.metaKey || e.target.tagName === 'INPUT') return;
+  if (['Shift', 'Control', 'Alt', 'Meta', 'Tab', 'CapsLock'].includes(e.key)) return;
+  const key = normKey(e);
+  if (rebinding) {
+    e.preventDefault();
+    if (e.key === 'Escape') return rebindTarget ? selectRebind(null) : setRebinding(false);
+    if (!rebindTarget) return;
+    if (RESERVED_KEYS.includes(key)) {
+      $('rebind-hint').classList.add('warn');
+      $('rebind-hint').textContent = `${key.replace(/[a-z]$/, c => c.toUpperCase())} is a browser shortcut and cannot be bound. Pick another key for ${rebindTarget.name}.`;
+      return;
+    }
+    // A key can only be bound to one ability: take it away from whichever had it
+    for (const a of ABILITIES) if (a.key === key) a.key = '';
+    rebindTarget.key = key;
+    saveKeys(); showKeys(); selectRebind(null);
+    return;
+  }
+  const a = ABILITIES.find(a => a.key && a.key === key);
+  if (a) { e.preventDefault(); press(a); }
 });
 
 $('footer').textContent =
   `WoW Forever dual wield fury in Berserker Stance against a level 63 boss. ` +
-  `Press Start fight, then use keys 1-9 and 0 or click to use abilities. See the Gear and Talents tabs for the setup.`;
+  `Press Start fight, then use the keys shown on the buttons, or click, to use abilities. See the Gear and Talents tabs for the setup.`;
 
 function render() {
   arenaEl.classList.toggle('idle', !S.started);
