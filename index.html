@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WoW Forever Fury Warrior Simulator</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: #14110e; color: #e8dcc0;
+    font-family: "Segoe UI", Tahoma, sans-serif; display: flex; justify-content: center;
+    user-select: none;
+  }
+  body { align-items: flex-start; flex-wrap: wrap; }
+  #app { width: 100%; max-width: 760px; padding: 16px; }
+  #buffpanel {
+    width: 230px; margin: 16px 0 0 16px; padding: 10px 12px 12px; position: sticky; top: 16px;
+    background: #1b1611; border: 1px solid #4a3b28; border-radius: 6px;
+  }
+  #buffpanel { max-height: calc(100vh - 32px); overflow-y: auto; }
+  #buffpanel h2 { font-size: 15px; color: #c79c6e; margin: 0 0 8px; }
+  #buffpanel section + section { margin-top: 14px; padding-top: 10px; border-top: 1px solid #3a2f20; }
+  .buffbtns { display: flex; gap: 6px; margin-bottom: 8px; }
+  .buffbtns button {
+    flex: 1; font: inherit; font-size: 12px; font-weight: 600; padding: 4px; cursor: pointer;
+    background: #3a2c1e; color: #e8dcc0; border: 1px solid #6b5a3a; border-radius: 4px;
+  }
+  .buffbtns button:hover { border-color: #c79c6e; }
+  .rbuff {
+    display: flex; align-items: center; gap: 8px; padding: 5px 4px; cursor: pointer; border-radius: 4px;
+    font-size: 12px; opacity: .55;
+  }
+  .rbuff:hover { background: #2b2318; }
+  .rbuff.on { opacity: 1; }
+  .rbuff img { width: 26px; height: 26px; border: 1px solid #6b5a3a; border-radius: 4px; flex: none; }
+  .rbuff.on img { border-color: #ffd100; }
+  .rbuff small { display: block; color: #8f846e; font-size: 10px; line-height: 1.25; }
+  .rbuff input { accent-color: #ffd100; flex: none; }
+  @media (max-width: 1040px) { #buffpanel { position: static; width: calc(100% - 32px); max-width: 728px; } }
+  #startwrap {
+    display: none; position: absolute; inset: 40px 0 0; z-index: 3; align-items: center; justify-content: center;
+    background: rgba(20, 17, 14, .6);
+  }
+  #arena.idle #startwrap { display: flex; flex-direction: column; gap: 14px; }
+  #hpsetting { font-size: 13px; color: #e8dcc0; display: flex; align-items: center; gap: 8px; }
+  #hpinput {
+    width: 120px; padding: 5px 8px; font: inherit; font-size: 14px; font-weight: 700; text-align: right;
+    background: #1b1611; color: #ffd100; border: 1px solid #6b5a3a; border-radius: 4px;
+  }
+  #start {
+    font: inherit; font-size: 22px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; cursor: pointer;
+    padding: 16px 44px; color: #fff; background: linear-gradient(#3fa535, #1f6a1a); border: 2px solid #7fdc6f; border-radius: 8px;
+  }
+  #start:hover { filter: brightness(1.15); }
+  header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+  h1 { font-size: 20px; margin: 0; color: #c79c6e; }
+  #meter { font-size: 14px; color: #b9ad92; font-variant-numeric: tabular-nums; }
+  #meter b { color: #ffd100; }
+
+  #arena {
+    position: relative; height: 300px; margin-top: 12px; overflow: hidden;
+    background: radial-gradient(ellipse at 50% 80%, #3a2c1e 0%, #1c1611 70%);
+    border: 1px solid #4a3b28; border-radius: 6px;
+  }
+  #target {
+    position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%);
+    text-align: center; color: #b9ad92; font-size: 12px;
+  }
+  #target svg { display: block; margin: 0 auto 4px; }
+  #target.hit svg { animation: shake .15s; }
+  @keyframes shake { 25% { transform: translateX(-4px) rotate(-2deg); } 75% { transform: translateX(4px) rotate(2deg); } }
+
+  #hpbar {
+    position: absolute; left: 12px; right: 12px; top: 10px; height: 20px; background: #1a2a12;
+    border: 1px solid #3d5a2a; border-radius: 4px; overflow: hidden;
+  }
+  #hpfill { height: 100%; width: 100%; background: linear-gradient(#4fb53a, #2e7d20); }
+  #hpbar.execute #hpfill { background: linear-gradient(#e0362a, #a3160e); }
+  #hpmark { position: absolute; left: 20%; top: 0; bottom: 0; width: 2px; background: #ffd100; opacity: .7; }
+  #hptext {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; text-shadow: 1px 1px 2px #000; font-variant-numeric: tabular-nums;
+  }
+  .floater {
+    position: absolute; font-weight: 800; font-size: 20px; pointer-events: none; white-space: nowrap;
+    text-shadow: 0 0 3px #000, 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+    animation: floatUp 1.4s ease-out forwards; transform: translateX(-50%);
+  }
+  .floater.white { color: #fff; }
+  .floater.yellow { color: #ffe100; }
+  .floater.crit { font-size: 34px; animation-name: floatCrit; }
+  .floater.avoid { color: #ddd; font-size: 16px; font-weight: 600; }
+  .floater.bleed { font-size: 14px; }
+  .floater.rage { color: #ff5a4a; font-size: 15px; }
+  @keyframes floatUp {
+    from { opacity: 1; margin-top: 0; } 70% { opacity: 1; } to { opacity: 0; margin-top: -130px; }
+  }
+  @keyframes floatCrit {
+    0% { opacity: 1; margin-top: 0; font-size: 50px; } 15% { font-size: 34px; }
+    70% { opacity: 1; } 100% { opacity: 0; margin-top: -130px; }
+  }
+
+  #stances { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: #b9ad92; }
+  .stance {
+    display: flex; align-items: center; gap: 6px; padding: 3px 10px 3px 3px; cursor: pointer; font: inherit; font-size: 12px;
+    background: #1b1611; color: #8f846e; border: 2px solid #3a2f20; border-radius: 6px; opacity: .6;
+  }
+  .stance img { width: 26px; height: 26px; border-radius: 4px; display: block; }
+  .stance.active { opacity: 1; color: #ffd100; font-weight: 700; border-color: #ffd100; box-shadow: 0 0 8px rgba(255, 209, 0, .5); }
+  .ability.proc { border-color: #ffe100; animation: proc .6s infinite alternate; }
+  @keyframes proc { from { box-shadow: 0 0 4px #ffe100; } to { box-shadow: 0 0 14px #ffe100, inset 0 0 10px rgba(255,225,0,.5); } }
+  #buffs { min-height: 30px; margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .buff {
+    font-size: 12px; padding: 4px 8px; border-radius: 4px; background: #2b2318;
+    border: 1px solid #6b5a3a; color: #ffd100; font-variant-numeric: tabular-nums;
+  }
+
+  .swing { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 11px; color: #b9ad92; }
+  .swing span { width: 62px; }
+  .swingbar { flex: 1; height: 6px; background: #241d15; border-radius: 3px; overflow: hidden; }
+  .swingbar div { height: 100%; width: 0; background: #c9c2b0; }
+
+  #ragebar {
+    position: relative; height: 28px; margin-top: 10px; background: #2a0d0a;
+    border: 1px solid #5c1f18; border-radius: 4px; overflow: hidden;
+  }
+  #ragefill { height: 100%; width: 0; background: linear-gradient(#e0362a, #a3160e); }
+  #ragetext {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px; text-shadow: 1px 1px 2px #000; font-variant-numeric: tabular-nums;
+  }
+
+  #bar { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; margin-top: 12px; }
+  .slot { text-align: center; font-size: 10px; color: #b9ad92; line-height: 1.2; }
+  .ability {
+    position: relative; display: block; width: 100%; aspect-ratio: 1; margin-bottom: 3px;
+    border: 2px solid #6b5a3a; border-radius: 6px; overflow: hidden;
+    background: #2a1712 center / cover no-repeat; color: #f3e6c8; cursor: pointer; padding: 0; font: inherit;
+  }
+  .ability:hover { border-color: #c79c6e; }
+  .ability:active { transform: scale(.95); }
+  .ability .key, .ability .cost {
+    position: absolute; font-size: 11px; font-weight: 700;
+    text-shadow: 0 0 2px #000, 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+  }
+  .ability .key { top: 2px; left: 4px; color: #fff; }
+  .ability .cost { bottom: 2px; right: 4px; color: #ff8a7b; }
+
+  #tab-combat { position: relative; }
+  #summary {
+    display: none; position: absolute; inset: 12px 0 0; z-index: 5; padding: 4px 18px 18px; overflow: auto;
+    background: rgba(20, 17, 14, .97); border: 1px solid #c79c6e; border-radius: 6px;
+  }
+  #summary.show { display: block; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .reset {
+    display: block; width: 100%; margin-top: 14px; padding: 14px; cursor: pointer;
+    font: inherit; font-size: 20px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase;
+    color: #fff; background: linear-gradient(#c0392b, #7d1810); border: 2px solid #e0685c; border-radius: 8px;
+  }
+  .reset:hover { filter: brightness(1.15); }
+  .reset:active { transform: scale(.99); }
+  nav { display: flex; gap: 4px; margin-top: 12px; border-bottom: 1px solid #4a3b28; }
+  nav button {
+    font: inherit; font-size: 13px; font-weight: 600; padding: 6px 16px; cursor: pointer;
+    background: #1b1611; color: #b9ad92; border: 1px solid #4a3b28; border-bottom: none; border-radius: 6px 6px 0 0;
+  }
+  nav button.active { background: #3a2c1e; color: #ffd100; }
+  .tab { display: none; }
+  .tab.active { display: block; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+  th { text-align: left; color: #c79c6e; font-size: 12px; padding: 4px 8px; border-bottom: 1px solid #4a3b28; }
+  td { padding: 5px 8px; border-bottom: 1px solid #2b2318; vertical-align: middle; }
+  td.dim, .dim { color: #8f846e; }
+  .q-epic { color: #a335ee; font-weight: 600; } .q-rare { color: #0070dd; font-weight: 600; }
+  .tab h2 { font-size: 15px; color: #c79c6e; margin: 18px 0 0; }
+  .statgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; margin-top: 10px; }
+  .stat { background: #1b1611; border: 1px solid #3a2f20; border-radius: 4px; padding: 6px 10px; font-size: 12px; color: #b9ad92; }
+  .stat b { display: block; font-size: 17px; color: #ffd100; }
+  .talent-icon, .buff img { width: 28px; height: 28px; border: 1px solid #6b5a3a; border-radius: 4px; display: block; }
+  .buff { display: flex; align-items: center; gap: 6px; }
+  .buff img { width: 18px; height: 18px; }
+  .ench { color: #1eff00; font-size: 11px; }
+  .rank { color: #ffd100; font-weight: 700; white-space: nowrap; }
+  .tag { font-size: 10px; padding: 1px 6px; border-radius: 8px; white-space: nowrap; }
+  .trees { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; }
+  .tree { background: #1b1611; border: 1px solid #3a2f20; border-radius: 6px; padding: 0 14px 14px; margin-top: 12px; }
+  .tree h2 { margin: 10px 0; text-align: center; }
+  .tgrid { display: grid; grid-template-columns: repeat(4, 40px); grid-template-rows: repeat(7, 40px); gap: 14px 10px; }
+  .tnode {
+    position: relative; z-index: 1; width: 40px; height: 40px; border: 2px solid #ffd100; border-radius: 5px;
+    background: #2a1712 center / cover no-repeat;
+  }
+  .tnode span {
+    position: absolute; right: -6px; bottom: -6px; font-size: 10px; font-weight: 700; padding: 0 3px;
+    background: #000; border-radius: 3px; color: #ffd100;
+  }
+  .tnode.partial { border-color: #40bf40; } .tnode.partial span { color: #40bf40; }
+  .tnode.empty { border-color: #4a4338; filter: grayscale(1) brightness(.8); } .tnode.empty span { color: #999; }
+  .tnode i {
+    position: absolute; left: -6px; top: -6px; font-size: 9px; font-style: normal; font-weight: 700; padding: 0 3px;
+    background: #1f3a1c; color: #7fdc6f; border-radius: 3px;
+  }
+  .tlink { width: 4px; justify-self: center; background: #4a4338; margin: 20px 0; }
+  .tlink.on { background: #ffd100; }
+  .tag.sim { background: #1f3a1c; color: #7fdc6f; } .tag.off { background: #2b2318; color: #8f846e; }
+  .ability .cdmask { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: rgba(0,0,0,.72); pointer-events: none; }
+  .ability .cdtext {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 800; color: #fff; text-shadow: 1px 1px 2px #000; pointer-events: none;
+  }
+  .ability.norage { filter: grayscale(.8) brightness(.6); }
+  .ability.queued { border-color: #ffe100; box-shadow: 0 0 10px #ffe100, inset 0 0 10px rgba(255,225,0,.4); }
+  .ability.denied { animation: denied .2s; }
+  @keyframes denied { 50% { border-color: #ff3020; } }
+
+  #log {
+    margin-top: 12px; height: 132px; overflow: hidden; font-size: 12px; line-height: 1.35;
+    background: #1b1611; border: 1px solid #3a2f20; border-radius: 4px; padding: 6px 8px;
+    display: flex; flex-direction: column; justify-content: flex-end; color: #b9ad92;
+  }
+  #log .y { color: #ffe100; } #log .w { color: #fff; } #log .r { color: #ff7a6b; }
+  footer { margin-top: 10px; font-size: 11px; color: #7d735f; line-height: 1.4; }
+</style>
+</head>
+<body>
+<aside id="buffpanel"></aside>
+<div id="app">
+  <header>
+    <h1>WoW Forever &mdash; Fury Warrior (60)</h1>
+    <div id="meter"></div>
+  </header>
+
+  <nav>
+    <button data-tab="combat" class="active">Combat</button>
+    <button data-tab="gear">Gear</button>
+    <button data-tab="talents">Talents</button>
+  </nav>
+
+  <div id="tab-combat" class="tab active">
+  <div id="summary">
+    <h2>Fight over &mdash; the dummy is dead</h2>
+    <div id="summary-body"></div>
+    <button class="reset">Reset</button>
+  </div>
+  <div id="arena">
+    <div id="hpbar"><div id="hpfill"></div><div id="hpmark"></div><div id="hptext"></div></div>
+    <div id="startwrap">
+      <button id="start">Start fight</button>
+      <label id="hpsetting">Dummy health <input id="hpinput" type="number" min="1000" max="100000000" step="5000"></label>
+    </div>
+    <div id="target">
+      <svg width="90" height="130" viewBox="0 0 90 130">
+        <rect x="41" y="60" width="8" height="70" fill="#6b4a2a"/>
+        <rect x="10" y="52" width="70" height="8" rx="3" fill="#7a5632"/>
+        <ellipse cx="45" cy="72" rx="20" ry="26" fill="#b08a55" stroke="#6b4a2a" stroke-width="2"/>
+        <circle cx="45" cy="28" r="18" fill="#c9a36a" stroke="#6b4a2a" stroke-width="2"/>
+        <circle cx="45" cy="72" r="9" fill="none" stroke="#a3160e" stroke-width="3"/>
+        <circle cx="45" cy="72" r="2.5" fill="#a3160e"/>
+      </svg>
+      Raid Boss Dummy (Level 63)
+    </div>
+  </div>
+
+  <div id="stances">
+    Stance
+    <button class="stance" data-stance="battle" title="Battle Stance. Overpower switches here and back automatically."><img src="https://wow.zamimg.com/images/wow/icons/large/ability_warrior_offensivestance.jpg" alt="">Battle</button>
+    <button class="stance" data-stance="berserker" title="Berserker Stance. +3% crit. Required for Whirlwind, Berserker Rage and Recklessness."><img src="https://wow.zamimg.com/images/wow/icons/large/ability_racial_avatar.jpg" alt="">Berserker</button>
+  </div>
+  <div id="buffs"></div>
+  <div class="swing"><span>Main hand</span><div class="swingbar"><div id="mhbar"></div></div></div>
+  <div class="swing"><span>Off hand</span><div class="swingbar"><div id="ohbar"></div></div></div>
+
+  <div id="ragebar"><div id="ragefill"></div><div id="ragetext"></div></div>
+  <div id="bar"></div>
+  <div id="log"></div>
+  <button class="reset">Reset</button>
+  <footer id="footer"></footer>
+  </div>
+
+  <div id="tab-gear" class="tab"></div>
+  <div id="tab-talents" class="tab"></div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Character / target setup. Tweak these to change gear.
+// ---------------------------------------------------------------------------
+const BASE = { race: 'Human', str: 120, agi: 80, ap: 160 };  // level 60 warrior, naked
+const BATTLE_SHOUT_AP = 139;                                 // Forever rank 7
+const CRIT_RATING_PER_PCT = 14, HIT_RATING_PER_PCT = 10;     // Forever item ratings at level 60
+
+// Gear and enchants from the MythicSim WoW Forever "DPS Warrior" tier-list preset (both trinket slots empty).
+// ench: stats added by the enchant on that slot.
+const GEAR = [
+  { slot: 'Head',      name: 'Lionheart Helm',          q: 'epic', icon: 'inv_helmet_36', str: 18, hitRating: 20, critRating: 28, enchant: '+8 Strength', ench: { str: 8 } },
+  { slot: 'Neck',      name: 'Imperial Jewel',          q: 'rare', icon: 'inv_misc_gem_sapphire_01', ap: 32 },
+  { slot: 'Shoulders', name: 'Truestrike Shoulders',    q: 'rare', icon: 'inv_shoulder_10', ap: 24, hitRating: 20 },
+  { slot: 'Back',      name: 'Cape of the Black Baron', q: 'rare', icon: 'inv_misc_cape_20', agi: 15, ap: 20, enchant: '+3 Agility', ench: { agi: 3 } },
+  { slot: 'Chest',     name: 'Savage Gladiator Chain',  q: 'epic', icon: 'inv_chest_chain_15', str: 16, agi: 14, critRating: 21, enchant: '+4 All Stats', ench: { str: 4, agi: 4 } },
+  { slot: 'Wrist',     name: 'Battleborn Armbraces',    q: 'rare', icon: 'inv_bracer_17', hitRating: 10, critRating: 14, enchant: '+9 Strength', ench: { str: 9 } },
+  { slot: 'Hands',     name: 'Death Grips',             q: 'rare', icon: 'inv_gauntlets_13', str: 22, hitRating: 5, enchant: '+7 Strength', ench: { str: 7 } },
+  { slot: 'Waist',     name: "Marksman's Girdle",       q: 'rare', icon: 'inv_belt_18', agi: 21, hitRating: 10 },
+  { slot: 'Legs',      name: 'Warbear Woolies',         q: 'rare', icon: 'inv_pants_wolf', str: 28, agi: 18, enchant: '+8 Strength', ench: { str: 8 } },
+  { slot: 'Feet',      name: 'Bloodmail Boots',         q: 'rare', icon: 'inv_boots_01', str: 9, agi: 9, hitRating: 10, enchant: '+7 Agility', ench: { agi: 7 } },
+  { slot: 'Ring',      name: 'Tarnished Elven Ring',    q: 'rare', icon: 'inv_jewelry_ring_13', agi: 15, hitRating: 10 },
+  { slot: 'Ring',      name: 'Blackstone Ring',         q: 'rare', icon: 'inv_jewelry_ring_17', ap: 20, hitRating: 10 },
+  { slot: 'Trinket',   name: null },
+  { slot: 'Trinket',   name: null },
+  { slot: 'Main hand', name: 'Ironfoe',                 q: 'epic', icon: 'spell_frost_frostbrand', weapon: { min: 73, max: 136, speed: 2.4, type: 'Mace' },
+    enchant: 'Crusader', note: 'Chance on hit: 2 extra attacks' },
+  { slot: 'Off hand',  name: "Cho'Rush's Blade",        q: 'rare', icon: 'inv_weapon_shortblade_04', ap: 28, weapon: { min: 67, max: 125, speed: 2.4, type: 'Sword' },
+    enchant: 'Crusader' },
+  { slot: 'Ranged',    name: "Satyr's Bow",             q: 'rare', icon: 'inv_weapon_bow_03', agi: 3, hitRating: 10 },
+];
+
+const gearSum = k => GEAR.reduce((n, g) => n + (g[k] || 0) + (g.ench?.[k] || 0), 0);
+const STATS = { str: BASE.str + gearSum('str'), agi: BASE.agi + gearSum('agi') };
+
+const CFG = {
+  ap: 0, crit: 0, windfury: false,   // set by applySetup()
+  hit: gearSum('hitRating') / HIT_RATING_PER_PCT,
+  mh: GEAR.find(g => g.slot === 'Main hand').weapon,
+  oh: GEAR.find(g => g.slot === 'Off hand').weapon,
+  targetHp: 75000,     // dummy health; a fresh dummy appears when it dies
+  executeRange: 0.2,   // Execute usable at or below 20% health
+  bossArmor: 3731,     // level 63 boss, before debuffs
+  armorMult: 1,        // damage multiplier after armor; set by applySetup()
+  arthas: 0,           // flat damage added to physical hits; set by applySetup()
+  chili: false,        // set by applySetup()
+  chiliChance: 0.05, chiliCd: 10, chiliDamage: 60,   // Dragonbreath Chili: 60 damage is the Classic value
+
+  // Level 60 vs level 63 boss, 300 weapon skill
+  baseMiss: 9, dwMissPenalty: 19, dodge: 6.5,
+  glanceChance: 40, glanceMult: 0.65, critSuppression: 4.8,
+
+  // Forever normalized rage: white hits give rage from weapon speed, not damage
+  ragePerSpeed: 3.46,      // rage per second of weapon speed (one-handed)
+  offhandRageBase: 0.5,    // off-hand hits give half
+  critRageMult: 2,         // crits give 100% more rage
+  gcd: 1.5,
+  // Talents (WoW Forever, 18/31/2)
+  offhandMult: 0.625,      // Dual Wield Specialization 5/5
+  abilityCritMult: 2.2,    // Impale 2/2
+  unbridledWrath: 0.6,     // 5/5: 60% chance for 1 rage on weapon hits
+  offhandRageMult: 1.5,    // Dual Wield Specialization 5/5: +50% rage from off-hand attacks
+  offhandHit: 10,          // Furious Precision 3/3: +10% off-hand hit chance
+  flurryHaste: 1.25,       // 5/5
+  angerMgmtInterval: 3,    // 1 rage / 3 sec
+  refundOnAvoid: 0.8,
+  // Stances
+  berserkerCrit: 3,        // Berserker Stance crit bonus (already included in crit)
+  stanceRage: 25,          // rage kept on a stance change: 10 Tactical Mastery + 15 Improved Tactical Mastery 5/5
+  stanceCd: 1,
+  overpowerWindow: 5,      // seconds Overpower stays usable after a dodge
+  overpowerCrit: 50,       // Improved Overpower 2/2
+  // Gear procs
+  ironfoeChance: 0.08,     // Ironfoe: chance on main hand hit for 2 extra attacks (fitted to MythicSim's extra swing count)
+  crusaderPpm: 1,          // Crusader: procs per minute, per weapon
+  crusaderAp: 200,         // Holy Strength: +100 Strength for 15 sec (set by applySetup())
+  ragePotionAp: 120,       // Mighty Rage Potion: +60 Strength for 20 sec (set by applySetup())
+  windfuryChance: 0.2,     // Windfury Totem: chance on main hand hit for 1 extra attack
+  windfuryAp: 246,         // ...with this much extra attack power
+};
+
+// Setup toggles (WoW Forever values at level 60), shown in the panel on the left.
+const RAID_BUFFS = [
+  { id: 'shout', name: 'Battle Shout',              icon: 'ability_warrior_battleshout',        desc: '+139 attack power', on: true },
+  { id: 'might', name: 'Greater Blessing of Might', icon: 'spell_holy_greaterblessingofkings',  desc: '+133 attack power', on: true },
+  { id: 'kings', name: 'Greater Blessing of Kings', icon: 'spell_magic_greaterblessingofkings', desc: '+10% Strength and Agility', on: true },
+  { id: 'gotw',  name: 'Gift of the Wild',          icon: 'spell_nature_regeneration',          desc: '+16 Strength and Agility', on: true },
+  { id: 'lotp',  name: 'Leader of the Pack',        icon: 'spell_nature_unyeildingstamina',     desc: '+3% crit chance', on: true },
+  { id: 'soe',   name: 'Strength of Earth Totem',   icon: 'spell_nature_earthbindtotem',        desc: '+53 Strength', on: true },
+  { id: 'goa',   name: 'Grace of Air Totem',        icon: 'spell_nature_invisibilitytotem',     desc: '+89 Agility', on: true },
+  { id: 'wf',    name: 'Windfury Totem',            icon: 'spell_nature_windfury',              desc: 'Main hand hits: 20% chance for an extra attack with +246 attack power', on: true },
+];
+const CONSUMABLES = [
+  { id: 'mongoose',  name: 'Elixir of the Mongoose',      icon: 'inv_potion_32',             desc: '+25 Agility, +2% crit chance', on: true },
+  { id: 'jujupower', name: 'Juju Power',                  icon: 'inv_misc_monsterscales_11', desc: '+30 Strength', on: true },
+  { id: 'jujumight', name: 'Juju Might',                  icon: 'inv_misc_monsterscales_07', desc: '+40 attack power', on: true },
+  { id: 'roids',     name: 'R.O.I.D.S.',                  icon: 'inv_stone_15',              desc: '+25 Strength', on: true },
+  { id: 'dumplings', name: 'Smoked Desert Dumplings',     icon: 'inv_misc_food_64',          desc: '+20 Strength', on: true },
+  { id: 'stones',    name: 'Elemental Sharpening Stones', icon: 'inv_stone_02',              desc: '+2% crit chance per weapon (+4% total)', on: true },
+  { id: 'chili',     name: 'Dragonbreath Chili',          icon: 'inv_drink_17',              desc: 'Melee hits: 5% chance to deal 60 fire damage (10 sec cooldown)', on: true },
+];
+const BOSS_DEBUFFS = [
+  { id: 'sunder', name: 'Sunder Armor / Expose Armor', icon: 'ability_warrior_sunder',       desc: '-2250 armor (the two do not stack)', on: true },
+  { id: 'ff',     name: 'Faerie Fire',                 icon: 'spell_nature_faeriefire',      desc: '-505 armor', on: true },
+  { id: 'cor',    name: 'Curse of Recklessness',       icon: 'spell_shadow_unholystrength',  desc: '-505 armor', on: true },
+  { id: 'arthas', name: 'Gift of Arthas',              icon: 'spell_nature_nullifydisease',  desc: '+8 physical damage taken per hit', on: true },
+];
+const TOGGLE_GROUPS = [
+  { title: 'Raid buffs', items: RAID_BUFFS },
+  { title: 'Consumables', items: CONSUMABLES },
+  { title: 'Boss debuffs', items: BOSS_DEBUFFS },
+];
+const ALL_TOGGLES = TOGGLE_GROUPS.flatMap(g => g.items);
+
+function applySetup() {
+  const on = id => ALL_TOGGLES.find(b => b.id === id).on;
+  const mult = on('kings') ? 1.1 : 1;
+  const str = (on('gotw') ? 16 : 0) + (on('soe') ? 53 : 0) + (on('jujupower') ? 30 : 0) + (on('roids') ? 25 : 0) + (on('dumplings') ? 20 : 0);
+  const agi = (on('gotw') ? 16 : 0) + (on('goa') ? 89 : 0) + (on('mongoose') ? 25 : 0);
+  STATS.str = Math.round((BASE.str + gearSum('str') + str) * mult);
+  STATS.agi = Math.round((BASE.agi + gearSum('agi') + agi) * mult);
+  // 2 AP per Strength
+  CFG.ap = BASE.ap + 2 * STATS.str + gearSum('ap') + (on('shout') ? BATTLE_SHOUT_AP : 0) + (on('might') ? 133 : 0) + (on('jujumight') ? 40 : 0);
+  // 20 Agility per 1% crit, +5% Cruelty, +3% Berserker Stance
+  CFG.crit = STATS.agi / 20 + gearSum('critRating') / CRIT_RATING_PER_PCT + 5 + 3 +
+    (on('lotp') ? 3 : 0) + (on('mongoose') ? 2 : 0) + (on('stones') ? 4 : 0) +
+    // Human racial Sword Specialization: +2% crit while a sword is equipped in either hand
+    (BASE.race === 'Human' && GEAR.some(g => g.weapon?.type === 'Sword') ? 2 : 0);
+  CFG.crusaderAp = Math.round(200 * mult);
+  CFG.ragePotionAp = Math.round(120 * mult);
+  CFG.windfury = on('wf');
+  CFG.chili = on('chili');
+  // Boss armor after debuffs; damage reduction = armor / (armor + 400 + 85 * attacker level)
+  CFG.targetArmor = Math.max(0, CFG.bossArmor - (on('sunder') ? 2250 : 0) - (on('ff') ? 505 : 0) - (on('cor') ? 505 : 0));
+  CFG.armorMult = 1 - CFG.targetArmor / (CFG.targetArmor + 400 + 85 * 60);
+  CFG.arthas = on('arthas') ? 8 : 0;
+}
+applySetup();
+
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+const newState = () => ({
+  t: 0, rage: 0, gcdUntil: 0, queued: null,
+  ready: {}, buffs: { dw: 0, reck: 0, brage: 0, crusMH: 0, crusOH: 0, potion: 0 },
+  flurry: 0, mhProg: 0, ohProg: 0.5,
+  amTimer: 0, bloodrageTicks: 0, bloodrageNext: 0,
+  woundTicks: 0, woundNext: 0,
+  woundTickDmg: 0,
+  stance: 'berserker', stanceReady: 0, returnStance: null, overpowerUntil: 0, chiliReady: 0,
+  totalDamage: 0, hp: CFG.targetHp, started: false, over: false,
+  stats: {}, rageGained: 0, rageWasted: 0,   // fight overview
+});
+const S = newState();
+const statFor = name => S.stats[name] ??= { dmg: 0, hits: 0, crits: 0, avoided: 0 };
+
+const rand = (a, b) => a + Math.random() * (b - a);
+const addRage = n => {
+  const gained = Math.min(n, 100 - S.rage);
+  S.rage += gained; S.rageGained += gained; S.rageWasted += n - gained;
+};
+const damageMult = () => CFG.armorMult * (S.t < S.buffs.dw ? 1.2 : 1);
+const critChance = () => Math.max(0, CFG.crit - CFG.critSuppression - (S.stance === 'berserker' ? 0 : CFG.berserkerCrit)) +
+  (S.t < S.buffs.reck ? 100 : 0);
+const ap = () => CFG.ap + CFG.crusaderAp * ((S.t < S.buffs.crusMH) + (S.t < S.buffs.crusOH)) +
+  (S.t < S.buffs.potion ? CFG.ragePotionAp : 0);
+const weaponRoll = (w, speedForAp) => rand(w.min, w.max) + ap() / 14 * (speedForAp ?? w.speed);
+
+// ---------------------------------------------------------------------------
+// Attack tables
+// ---------------------------------------------------------------------------
+function rollWhite(isOffhand) {
+  const miss = Math.max(0, CFG.baseMiss + CFG.dwMissPenalty - CFG.hit - (isOffhand ? CFG.offhandHit : 0));
+  let r = Math.random() * 100;
+  if ((r -= miss) < 0) return 'miss';
+  if ((r -= CFG.dodge) < 0) return 'dodge';
+  if ((r -= CFG.glanceChance) < 0) return 'glance';
+  if ((r -= critChance()) < 0) return 'crit';
+  return 'hit';
+}
+
+function rollYellow(opts = {}) {
+  const miss = Math.max(0, CFG.baseMiss - CFG.hit);
+  const r = Math.random() * 100;
+  if (r < miss) return 'miss';
+  if (!opts.noDodge && r < miss + CFG.dodge) return 'dodge';
+  return Math.random() * 100 < critChance() + (opts.critBonus || 0) ? 'crit' : 'hit';
+}
+
+// ---------------------------------------------------------------------------
+// Attacks
+// ---------------------------------------------------------------------------
+function damageTarget(name, dmg, crit) {
+  dmg = Math.min(dmg, Math.ceil(S.hp));
+  S.totalDamage += dmg;
+  S.hp -= dmg;
+  const st = statFor(name);
+  st.dmg += dmg; st.hits++; if (crit) st.crits++;
+  if (S.hp <= 0) endFight();
+  return dmg;
+}
+
+function deal(name, dmg, crit, cls, noFlurry) {
+  if (S.over) return 0;
+  dmg = damageTarget(name, Math.round(dmg), crit);
+  floater(dmg + (crit ? '!' : ''), cls + (crit ? ' crit' : ''));
+  log(`<span class="${cls === 'yellow' ? 'y' : 'w'}">${name} ${crit ? 'crits' : 'hits'} for ${dmg}.</span>`);
+  if (crit) {
+    if (!noFlurry) S.flurry = 3;
+    // Deep Wounds 3/3: each crit adds 60% of the main hand's average weapon damage (no attack power),
+    // rolled together with whatever the running bleed still owed, over 4 ticks
+    const owed = S.woundTicks * S.woundTickDmg;
+    S.woundTickDmg = (owed + 0.6 * (CFG.mh.min + CFG.mh.max) / 2) / 4;
+    S.woundTicks = 4; S.woundNext = S.t + 3;
+  }
+  targetEl.classList.remove('hit'); void targetEl.offsetWidth; targetEl.classList.add('hit');
+  return dmg;
+}
+
+function avoided(name, res) {
+  if (S.over) return;
+  statFor(name).avoided++;
+  const word = res === 'miss' ? 'Miss' : 'Dodge';
+  if (res === 'dodge') S.overpowerUntil = S.t + CFG.overpowerWindow;
+  floater(word, 'avoid');
+  log(`${name}: ${word.toLowerCase()}.`);
+}
+
+// Special attack. `cost` has already been paid; part is refunded if avoided.
+// Weapon procs on a landed hit
+function weaponProcs(isOffhand, allowExtra) {
+  if (CFG.chili && S.t >= S.chiliReady && !S.over && Math.random() < CFG.chiliChance) {
+    S.chiliReady = S.t + CFG.chiliCd;
+    const dmg = damageTarget('Dragonbreath Chili', CFG.chiliDamage, false);
+    floater(dmg, 'yellow bleed');
+    log(`<span class="y">Dragonbreath Chili hits for ${dmg}.</span>`);
+  }
+  const w = isOffhand ? CFG.oh : CFG.mh;
+  if (Math.random() < CFG.crusaderPpm * w.speed / 60) {
+    S.buffs[isOffhand ? 'crusOH' : 'crusMH'] = S.t + 15;
+    log('<span class="r">You gain Holy Strength.</span>');
+  }
+  if (!isOffhand && allowExtra && Math.random() < CFG.ironfoeChance) {
+    log('<span class="r">Ironfoe grants 2 extra attacks.</span>');
+    whiteAttack(false, 'Ironfoe');
+    whiteAttack(false, 'Ironfoe');
+  }
+  if (!isOffhand && allowExtra && CFG.windfury && Math.random() < CFG.windfuryChance) {
+    log('<span class="r">Windfury grants an extra attack.</span>');
+    whiteAttack(false, 'Windfury', CFG.windfuryAp);
+  }
+}
+
+function yellowAttack(name, base, cost, refund, isOffhand = false, opts) {
+  const res = rollYellow(opts);
+  if (res === 'miss' || res === 'dodge') {
+    avoided(name, res);
+    if (refund) addRage(cost * CFG.refundOnAvoid);
+    return false;
+  }
+  const crit = res === 'crit';
+  deal(name, base * damageMult() * (crit ? CFG.abilityCritMult : 1) + CFG.arthas, crit, 'yellow', opts?.noFlurry);
+  if (opts?.swing) {
+    if (!crit && S.flurry > 0) S.flurry--;
+    if (Math.random() < CFG.unbridledWrath) addRage(1);
+  }
+  weaponProcs(isOffhand, true);
+  return true;
+}
+
+function whiteAttack(isOffhand, extra = false, bonusAp = 0) {
+  const w = isOffhand ? CFG.oh : CFG.mh;
+  const name = isOffhand ? 'Off hand' : extra ? `Main hand (${extra})` : 'Main hand';
+  const res = rollWhite(isOffhand);
+  if (res === 'miss' || res === 'dodge') return avoided(name, res);
+  let dmg = (weaponRoll(w) + bonusAp / 14 * w.speed) * (isOffhand ? CFG.offhandMult : 1) * damageMult();
+  if (res === 'glance') dmg *= CFG.glanceMult;
+  if (res === 'crit') dmg *= 2;
+  dmg = deal(name, dmg + CFG.arthas, res === 'crit', 'white');
+  if (res !== 'crit' && S.flurry > 0) S.flurry--;
+  // Glancing blows give full rage; misses and dodges (returned above) give none
+  addRage(CFG.ragePerSpeed * w.speed * (isOffhand ? CFG.offhandRageBase * CFG.offhandRageMult : 1) *
+    (res === 'crit' ? CFG.critRageMult : 1));
+  if (Math.random() < CFG.unbridledWrath) addRage(1);
+  weaponProcs(isOffhand, !extra);
+}
+
+function mainHandSwing() {
+  const q = S.queued && ABILITY[S.queued];
+  S.queued = null;
+  if (q && S.rage >= q.cost) {
+    S.rage -= q.cost;
+    yellowAttack(q.name, weaponRoll(CFG.mh) + q.bonus, q.cost, true, false, { swing: true });
+  } else {
+    whiteAttack(false);
+  }
+}
+
+function offHandSwing() {
+  whiteAttack(true);
+}
+
+// ---------------------------------------------------------------------------
+// Abilities
+// ---------------------------------------------------------------------------
+const ABILITIES = [
+  { id: 'bt', name: 'Bloodthirst', icon: 'spell_nature_bloodlust', key: '1', cost: 30, cd: 6, gcd: true,
+    desc: 'Instantly attack for 45% of your attack power plus 48.',
+    use() { yellowAttack(this.name, 0.45 * ap() + 48, this.cost, true); } },
+  { id: 'ww', name: 'Whirlwind', icon: 'ability_whirlwind', key: '2', cost: 22, cd: 10, gcd: true, stance: 'berserker',
+    desc: 'Weapon damage from both weapons. Costs 22 rage (Raging Blows). Requires Berserker Stance.',
+    use() {
+      yellowAttack(this.name, weaponRoll(CFG.mh, 2.4), this.cost, false);
+      yellowAttack(this.name + ' (off hand)', weaponRoll(CFG.oh, 2.4) * CFG.offhandMult, this.cost, false, true, { noFlurry: true });
+    } },
+  { id: 'hs', name: 'Heroic Strike', icon: 'ability_rogue_ambush', key: '3', cost: 13, queue: true, bonus: 157,
+    desc: 'Next main hand swing deals +157 damage. Costs 13 rage (Improved Heroic Strike 2/3). Press again to cancel.' },
+  { id: 'execute', name: 'Execute', icon: 'inv_sword_48', key: '4', cost: 10, cd: 0, gcd: true,
+    desc: 'Only usable at or below 20% target health. Deals 600 damage plus 15 per extra point of rage, using all your rage. Costs 10 rage (Improved Execute).',
+    usable: () => S.hp <= CFG.targetHp * CFG.executeRange,
+    use() {
+      const extra = S.rage;
+      S.rage = 0;
+      yellowAttack(this.name, 600 + 15 * extra, this.cost, true);
+    } },
+  { id: 'overpower', name: 'Overpower', icon: 'ability_meleedamage', key: '5', cost: 5, cd: 5, gcd: true, stance: 'battle',
+    desc: 'Only usable within 5 sec after the target dodges. Weapon damage plus 35; cannot be dodged; +50% crit chance (Improved Overpower). Switches to Battle Stance, then back to Berserker Stance 1 sec later.',
+    usable: () => S.t < S.overpowerUntil, proc: true, returnStance: true,
+    use() {
+      S.overpowerUntil = 0;
+      yellowAttack(this.name, weaponRoll(CFG.mh, 2.4) + 35, this.cost, false, false, { noDodge: true, critBonus: CFG.overpowerCrit });
+    } },
+  { id: 'brage', name: 'Berserker Rage', icon: 'spell_nature_ancestralguardian', key: '6', cost: 0, cd: 30, gcd: true, stance: 'berserker',
+    desc: 'Fear immunity and extra rage when taking damage for 10 sec. Generates no rage here: Improved Berserker Rage is not taken and you take no damage.',
+    use() { S.buffs.brage = S.t + 10; log('<span class="r">You gain Berserker Rage.</span>'); } },
+  { id: 'bloodrage', name: 'Bloodrage', icon: 'ability_racial_bloodrage', key: '7', cost: 0, cd: 60,
+    desc: 'Generates 15 rage instantly and 15 more over 10 sec (Improved Bloodrage 2/2). Not on the global cooldown.',
+    use() { gainRage(15, this.name); S.bloodrageTicks = 10; S.bloodrageNext = S.t + 1; } },
+  { id: 'dw', name: 'Death Wish', icon: 'spell_shadow_deathpact', key: '8', cost: 10, cd: 180, gcd: true,
+    desc: '+20% physical damage for 30 sec.',
+    use() { S.buffs.dw = S.t + 30; log('<span class="r">You gain Death Wish.</span>'); } },
+  { id: 'reck', name: 'Recklessness', icon: 'ability_criticalstrike', key: '9', cost: 0, cd: 1800, gcd: true, stance: 'berserker',
+    desc: '+100% crit chance for 15 sec. 30 min cooldown. Requires Berserker Stance.',
+    use() { S.buffs.reck = S.t + 15; log('<span class="r">You gain Recklessness.</span>'); } },
+  { id: 'potion', name: 'Mighty Rage Potion', icon: 'inv_potion_41', key: '0', cost: 0, cd: 120,
+    desc: 'Generates 45 to 75 rage and gives +60 Strength for 20 sec. 2 min cooldown. Not on the global cooldown.',
+    use() { S.buffs.potion = S.t + 20; gainRage(Math.round(rand(45, 75)), this.name); } },
+];
+const ABILITY = Object.fromEntries(ABILITIES.map(a => [a.id, a]));
+
+function gainRage(n, name) {
+  addRage(n);
+  floater(`+${n} Rage`, 'rage');
+  log(`<span class="r">${name}: +${n} rage.</span>`);
+}
+
+function setStance(stance) {
+  S.returnStance = null;
+  S.stance = stance;
+  S.stanceReady = S.t + CFG.stanceCd;
+  const lost = Math.max(0, S.rage - CFG.stanceRage);
+  S.rage -= lost; S.rageWasted += lost;
+  const name = stance === 'battle' ? 'Battle Stance' : 'Berserker Stance';
+  floater(name, 'rage');
+  log(`<span class="r">You enter ${name}${lost >= 1 ? ` and lose ${Math.round(lost)} rage` : ''}.</span>`);
+}
+
+function press(a) {
+  if (!S.started || S.over) return;
+  if (a.queue) {
+    if (S.queued === a.id) S.queued = null;
+    else if (S.rage >= a.cost) S.queued = a.id;
+    else deny(a);
+    return;
+  }
+  // Abilities that need another stance switch to it automatically (rage above the kept amount is lost)
+  const swap = a.stance && a.stance !== S.stance;
+  const rage = swap ? Math.min(S.rage, CFG.stanceRage) : S.rage;
+  if (S.t < (S.ready[a.id] || 0) || (a.gcd && S.t < S.gcdUntil) || rage < a.cost || (a.usable && !a.usable()) ||
+      (swap && S.t < S.stanceReady)) return deny(a);
+  const from = S.stance;
+  if (swap) setStance(a.stance);
+  // Overpower flips back to the stance it came from as soon as the stance cooldown allows
+  if (swap && a.returnStance) S.returnStance = from;
+  S.rage -= a.cost;
+  S.ready[a.id] = S.t + a.cd;
+  if (a.gcd) S.gcdUntil = S.t + CFG.gcd;
+  a.use();
+}
+
+function deny(a) {
+  a.el.classList.remove('denied'); void a.el.offsetWidth; a.el.classList.add('denied');
+}
+
+// ---------------------------------------------------------------------------
+// Simulation tick
+// ---------------------------------------------------------------------------
+function tick(dt) {
+  S.t += dt;
+
+  if (S.returnStance && S.t >= S.stanceReady) setStance(S.returnStance);
+
+  S.amTimer += dt;
+  while (S.amTimer >= CFG.angerMgmtInterval) { S.amTimer -= CFG.angerMgmtInterval; addRage(1); }
+
+  while (S.bloodrageTicks > 0 && S.t >= S.bloodrageNext) {
+    addRage(1.5); S.bloodrageTicks--; S.bloodrageNext += 1;
+  }
+
+  // Deep Wounds bleed tick: ignores armor and damage modifiers
+  while (S.woundTicks > 0 && S.t >= S.woundNext && !S.over) {
+    const dmg = Math.round(S.woundTickDmg);
+    S.woundTicks--; S.woundNext += 3;
+    damageTarget('Deep Wounds', dmg, false);
+    floater(dmg, 'white bleed');
+    log(`<span class="w">Deep Wounds ticks for ${dmg}.</span>`);
+  }
+
+  const haste = S.flurry > 0 ? CFG.flurryHaste : 1;
+  S.mhProg += dt * haste / CFG.mh.speed;
+  S.ohProg += dt * haste / CFG.oh.speed;
+  if (S.mhProg >= 1) { S.mhProg -= 1; mainHandSwing(); }
+  if (S.ohProg >= 1) { S.ohProg -= 1; offHandSwing(); }
+}
+
+// ---------------------------------------------------------------------------
+// UI
+// ---------------------------------------------------------------------------
+let last = performance.now();
+const $ = id => document.getElementById(id);
+const arenaEl = $('arena'), targetEl = $('target'), logEl = $('log');
+
+const iconUrl = name => `https://wow.zamimg.com/images/wow/icons/large/${name}.jpg`;
+
+function floater(text, cls) {
+  if (!arenaEl.offsetParent) return;   // combat tab hidden
+  const el = document.createElement('div');
+  el.className = 'floater ' + cls;
+  el.textContent = text;
+  el.style.left = rand(25, 75) + '%';
+  el.style.top = rand(35, 55) + '%';
+  el.addEventListener('animationend', () => el.remove());
+  arenaEl.appendChild(el);
+}
+
+function log(html) {
+  const el = document.createElement('div');
+  el.innerHTML = html;
+  logEl.appendChild(el);
+  while (logEl.children.length > 8) logEl.firstChild.remove();
+}
+
+function fmtTime(s) {
+  if (s >= 60) return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+  return s >= 10 ? Math.ceil(s) : s.toFixed(1);
+}
+
+for (const a of ABILITIES) {
+  const el = document.createElement('button');
+  el.className = 'ability';
+  el.title = `${a.name}\n${a.cost ? a.cost + ' rage' : 'No cost'}${a.cd ? ' · ' + fmtTime(a.cd) + (a.cd >= 60 ? ' min' : ' sec') + ' cooldown' : ''}\n${a.desc}`;
+  el.style.backgroundImage = `url(${iconUrl(a.icon)})`;
+  el.innerHTML = `<span class="key">${a.key}</span>` +
+    (a.cost ? `<span class="cost">${a.cost}</span>` : '') +
+    `<div class="cdmask"></div><div class="cdtext"></div>`;
+  el.addEventListener('click', () => press(a));
+  a.el = el; a.mask = el.querySelector('.cdmask'); a.cdText = el.querySelector('.cdtext');
+  const slot = document.createElement('div');
+  slot.className = 'slot';
+  slot.append(el, a.name);
+  $('bar').appendChild(slot);
+}
+
+// --- Fight overview and reset ---
+function endFight() {
+  S.over = true;
+  S.hp = 0;
+  const tile = (label, value) => `<div class="stat"><b>${value}</b>${label}</div>`;
+  const rows = Object.entries(S.stats).sort((a, b) => b[1].dmg - a[1].dmg).map(([name, st]) =>
+    `<tr><td>${name}</td><td class="num">${st.dmg.toLocaleString()}</td>` +
+    `<td class="num">${(st.dmg / S.totalDamage * 100).toFixed(1)}%</td><td class="num">${(st.dmg / S.t).toFixed(1)}</td>` +
+    `<td class="num">${st.hits}</td><td class="num">${st.hits ? (st.crits / st.hits * 100).toFixed(0) + '%' : '-'}</td>` +
+    `<td class="num">${st.avoided}</td></tr>`).join('');
+  $('summary-body').innerHTML =
+    `<div class="statgrid">` +
+      tile('Fight length', fmtTime(S.t)) + tile('DPS', (S.totalDamage / S.t).toFixed(1)) +
+      tile('Total damage', S.totalDamage.toLocaleString()) +
+      tile('Rage gained', Math.round(S.rageGained)) + tile('Rage lost to cap', Math.round(S.rageWasted)) +
+    `</div>` +
+    `<table><tr><th>Source</th><th class="num">Damage</th><th class="num">Share</th><th class="num">DPS</th>` +
+    `<th class="num">Hits</th><th class="num">Crit</th><th class="num">Miss / dodge</th></tr>${rows}</table>`;
+  $('summary').classList.add('show');
+}
+
+function reset() {
+  Object.assign(S, newState());
+  $('hpinput').value = CFG.targetHp;
+  logEl.innerHTML = '';
+  arenaEl.querySelectorAll('.floater').forEach(el => el.remove());
+  $('summary').classList.remove('show');
+  last = performance.now();
+}
+document.querySelectorAll('.stance').forEach(btn => btn.addEventListener('click', () => {
+  if (!S.started || S.over || S.stance === btn.dataset.stance || S.t < S.stanceReady) return;
+  setStance(btn.dataset.stance);
+}));
+// Dummy health can be changed before a fight starts; it is kept across resets
+$('hpinput').value = CFG.targetHp;
+$('hpinput').addEventListener('input', e => {
+  const v = Math.round(Number(e.target.value));
+  if (!Number.isFinite(v) || v < 1000 || S.started) return;
+  CFG.targetHp = Math.min(v, 100000000);
+  S.hp = CFG.targetHp;
+});
+$('hpinput').addEventListener('change', e => { e.target.value = CFG.targetHp; });
+$('start').addEventListener('click', () => { S.started = true; last = performance.now(); });
+document.querySelectorAll('.reset').forEach(btn => btn.addEventListener('click', reset));
+
+// --- Tabs ---
+for (const btn of document.querySelectorAll('nav button')) {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.id === 'tab-' + btn.dataset.tab));
+  });
+}
+
+// --- Gear tab ---
+function renderGearTab() {
+  const statText = g => [
+    g.weapon && `${g.weapon.min}-${g.weapon.max} damage, ${g.weapon.speed.toFixed(2)} speed`,
+    g.str && `+${g.str} Str`, g.agi && `+${g.agi} Agi`, g.ap && `+${g.ap} AP`,
+    g.critRating && `+${(g.critRating / CRIT_RATING_PER_PCT).toFixed(1)}% crit`,
+    g.hitRating && `+${(g.hitRating / HIT_RATING_PER_PCT).toFixed(1)}% hit`,
+    g.note,
+  ].filter(Boolean).join(', ');
+  const stat = (label, value) => `<div class="stat"><b>${value}</b>${label}</div>`;
+  const row = g => g.name
+    ? `<tr><td class="dim">${g.slot}</td><td style="width:36px"><img class="talent-icon" src="${iconUrl(g.icon)}" alt=""></td>` +
+      `<td><span class="q-${g.q}">${g.name}</span>${g.enchant ? `<div class="ench">${g.enchant}</div>` : ''}</td><td>${statText(g)}</td></tr>`
+    : `<tr><td class="dim">${g.slot}</td><td></td><td class="dim">Empty</td><td></td></tr>`;
+  const active = [...RAID_BUFFS, ...CONSUMABLES].filter(b => b.on).map(b => b.name).join(', ') || 'none';
+  $('tab-gear').innerHTML =
+    `<div class="statgrid">` +
+      stat('Attack power (buffed)', CFG.ap) +
+      stat('Crit chance (Berserker Stance)', CFG.crit.toFixed(2) + '%') +
+      stat('Hit chance', '+' + CFG.hit + '%') +
+      stat('Strength', STATS.str) + stat('Agility', STATS.agi) +
+    `</div>` +
+    `<table><tr><th>Slot</th><th></th><th>Item</th><th>Stats used by the sim</th></tr>${GEAR.map(row).join('')}</table>` +
+    `<footer>Gear and enchants from the MythicSim WoW Forever DPS Warrior tier-list preset (pre-raid, both trinket slots empty). ` +
+    `${BASE.race} warrior, base ${BASE.str} Strength / ${BASE.agi} Agility. Attack power = ${BASE.ap} base + 2 per Strength + gear + raid buffs. ` +
+    `Crit = Agility / 20 + gear + 5% Cruelty + 3% Berserker Stance + 2% Sword Specialization (Human, sword equipped) + buffs. Active buffs and consumables: ${active}. Boss armor after debuffs: ${CFG.targetArmor} (${((1 - CFG.armorMult) * 100).toFixed(1)}% damage reduction). ` +
+    `Crusader: about 1 proc per minute per weapon, +100 Strength for 15 sec. Ironfoe: ${CFG.ironfoeChance * 100}% chance on main hand hit for 2 extra attacks. ` +
+    `No world buffs. Stamina, armor and other defensive stats are omitted.</footer>`;
+}
+renderGearTab();
+
+// --- Setup panel: raid buffs, consumables, boss debuffs ---
+{
+  const panel = $('buffpanel');
+  const draw = () => {
+    panel.innerHTML = TOGGLE_GROUPS.map((g, i) =>
+      `<section><h2>${g.title}</h2>` +
+      `<div class="buffbtns"><button data-group="${i}" data-on="1">All</button><button data-group="${i}" data-on="">None</button></div>` +
+      g.items.map(b =>
+        `<label class="rbuff ${b.on ? 'on' : ''}" title="${b.desc}"><input type="checkbox" data-id="${b.id}" ${b.on ? 'checked' : ''}>` +
+        `<img src="${iconUrl(b.icon)}" alt=""><span><b>${b.name}</b><small>${b.desc}</small></span></label>`).join('') +
+      `</section>`).join('');
+  };
+  const changed = () => { applySetup(); draw(); renderGearTab(); };
+  panel.addEventListener('change', e => {
+    ALL_TOGGLES.find(b => b.id === e.target.dataset.id).on = e.target.checked;
+    changed();
+  });
+  panel.addEventListener('click', e => {
+    if (!e.target.dataset.group) return;
+    TOGGLE_GROUPS[e.target.dataset.group].items.forEach(b => b.on = !!e.target.dataset.on);
+    changed();
+  });
+  draw();
+}
+
+// --- Talents tab ---
+{
+  // WoW Forever beta trees (51 points at level 60). Points follow the MythicSim DPS Warrior preset (18 / 31 / 2).
+  // [name, points, max, row, col, icon, description at max rank, simulated, prerequisite, new in Forever]
+  const NEW = true;
+  const TREES = [
+    { name: 'Arms', talents: [
+      ['Improved Heroic Strike', 2, 3, 1, 1, 'ability_rogue_ambush', 'Heroic Strike costs 1 less rage per point (13 at 2/3).', true],
+      ['Deflection', 0, 5, 1, 2, 'ability_parry', '+5% parry chance.'],
+      ['Improved Rend', 3, 3, 1, 3, 'ability_gouge', '+35% Rend bleed damage.'],
+      ['Improved Charge', 0, 2, 2, 1, 'ability_warrior_charge', 'Charge generates 6 more rage.'],
+      ['Improved Tactical Mastery', 5, 5, 2, 2, 'spell_nature_enchantarmor', 'Retain an additional 15 rage when changing stances (25 total).', true],
+      ['Improved Overpower', 2, 2, 2, 4, 'inv_sword_05', '+50% Overpower crit chance.', true],
+      ['Anger Management', 1, 1, 3, 2, 'spell_holy_blessingofstamina', 'Generates 1 rage every 3 sec in combat; 30% slower rage decay out of combat.', true, 'Improved Tactical Mastery'],
+      ['Deep Wounds', 3, 3, 3, 3, 'ability_backstab', 'Crits bleed for 60% of average weapon damage over 12 sec; repeat crits roll the remaining damage into the new bleed.', true, 'Improved Rend'],
+      ['Spearing Strike', 0, 1, 4, 1, 'inv_spear_01', 'Deals 40% weapon damage, plus 80% more against Giants, Dragonkin and mounted targets.', false, null, NEW],
+      ['Two-Handed Weapon Specialization', 0, 3, 4, 2, 'inv_axe_09', '+3% damage with two-handed weapons.'],
+      ['Impale', 2, 2, 4, 3, 'ability_searingarrow', '+20% crit damage bonus on abilities.', true],
+      ['Bloodthrill', 0, 5, 5, 1, 'inv_sword_01', 'Main hand attacks on targets with your Rend have a 20% chance to enable Overpower.', false, null, NEW],
+      ['Sweeping Strikes', 0, 1, 5, 2, 'ability_rogue_slicedice', 'Your next 5 melee attacks strike an additional nearby opponent.'],
+      ['Weaponmaster', 0, 5, 5, 3, 'garrison_weaponupgrade', 'Axe/Polearm: +5% crit. Mace/Staff: ignore 15% armor. Sword: 5% chance for an extra attack.', false, null, NEW],
+      ['Improved Slam', 0, 2, 6, 1, 'ability_warrior_decisivestrike', 'Slam casts 0.5 sec faster, no longer delays your swing, and its cooldown is reduced by 3 sec.'],
+      ['Improved Hamstring', 0, 3, 6, 3, 'ability_shockwave', 'Hamstring has a 15% chance to immobilize for 5 sec.'],
+      ['Mortal Strike', 0, 1, 7, 2, 'ability_warrior_savageblow', 'Weapon damage plus 85; reduces healing on the target by 50% for 10 sec.', false, 'Sweeping Strikes'],
+    ]},
+    { name: 'Fury', talents: [
+      ['Booming Voice', 0, 5, 1, 2, 'spell_nature_purge', '+50% shout area and 25% lower shout rage cost.'],
+      ['Cruelty', 5, 5, 1, 3, 'ability_rogue_eviscerate', '+5% melee crit chance.', true],
+      ['Lingering Rage', 3, 5, 2, 2, 'ability_warrior_secondwind', 'Rage starts decaying 10 sec later after leaving combat.', false, null, NEW],
+      ['Unbridled Wrath', 5, 5, 2, 3, 'spell_nature_stoneclawtotem', '60% chance to generate 1 extra rage when you deal melee weapon damage.', true],
+      ['Furious Precision', 3, 3, 3, 1, 'ability_warrior_incite', '+10% hit chance with off-hand attacks.', true, null, NEW],
+      ['Piercing Howl', 0, 1, 3, 2, 'spell_shadow_deathscream', 'Dazes enemies within 10 yards for 6 sec.'],
+      ['Blood Craze', 0, 3, 3, 3, 'spell_shadow_summonimp', 'Regenerate health after being crit or taking a heavy hit.'],
+      ['Dual Wield Specialization', 5, 5, 4, 1, 'ability_dualwield', '+25% off-hand damage and +50% rage from off-hand attacks.', true],
+      ['Raging Blows', 1, 1, 4, 2, 'ability_whirlwind', 'Cleave and Whirlwind cost 3 less rage.', true, null, NEW],
+      ['Enrage', 0, 5, 4, 3, 'spell_shadow_unholyfrenzy', '30% chance for +10% Physical damage for 12 sec after taking a damaging attack.'],
+      ['Improved Execute', 2, 2, 4, 4, 'inv_sword_48', 'Execute costs 5 less rage (10).', true],
+      ['Improved Berserker Rage', 0, 2, 5, 1, 'spell_nature_ancestralguardian', 'Berserker Rage instantly generates 10 rage and removes movement impairing effects.', true],
+      ['Death Wish', 1, 1, 5, 2, 'spell_shadow_deathpact', '+20% Physical damage and Fear immunity for 30 sec; damage taken +5%.', true],
+      ['Improved Intercept', 0, 2, 5, 4, 'ability_rogue_sprint', 'Intercept cooldown reduced by 10 sec.'],
+      ['Flurry', 5, 5, 6, 2, 'ability_ghoulfrenzy', '+25% attack speed for your next 3 swings after a melee crit.', true, 'Death Wish'],
+      ['Gore Drinker', 0, 2, 6, 3, 'racial_troll_berserk', 'Enrage, Berserker Rage, Bloodrage, Death Wish and Bloodthirst make your next 3 melee attacks restore 1% health.', false, 'Enrage', NEW],
+      ['Bloodthirst', 1, 1, 7, 2, 'spell_nature_bloodlust', 'Instant attack for 45% of attack power plus 48 (rank 4); +10% movement speed for 10 sec.', true],
+    ]},
+    { name: 'Protection', talents: [
+      ['Improved Bloodrage', 2, 2, 1, 1, 'ability_racial_bloodrage', 'Bloodrage generates 50% more rage.', true],
+      ['Shield Specialization', 0, 5, 1, 2, 'inv_shield_06', '+5% block chance; blocks generate 5 rage.'],
+      ['Iron Will', 0, 5, 1, 3, 'spell_magic_magearmor', 'Stun and Fear effects on you last 15% less.'],
+      ['Anticipation', 0, 5, 2, 1, 'spell_nature_mirrorimage', '+20 Defense skill.'],
+      ['Improved Revenge', 0, 3, 2, 3, 'ability_warrior_revenge', '+60% Revenge damage.'],
+      ['Improved Thunder Clap', 0, 3, 2, 4, 'ability_thunderclap', 'Thunder Clap costs 6 less rage.'],
+      ['Last Stand', 0, 1, 3, 1, 'spell_holy_ashestoashes', 'Temporarily gain 30% of maximum health for 20 sec.'],
+      ['Master of Defense', 0, 2, 3, 2, 'ability_warrior_shieldguard', 'Generate 5 rage when you dodge or parry with a shield equipped.', false, 'Shield Specialization', NEW],
+      ['Improved Disarm', 0, 3, 3, 3, 'ability_warrior_disarm', 'Disarm cooldown reduced by 20 sec.'],
+      ['Defiance', 0, 3, 3, 4, 'ability_warrior_innerrage', '+15% threat in Defensive Stance with a shield equipped.'],
+      ['Improved Sunder Armor', 0, 3, 4, 1, 'ability_warrior_sunder', 'Sunder Armor costs 3 less rage.'],
+      ['Vanguard', 0, 1, 4, 2, 'ability_warrior_shieldcharge', 'Charge is usable in Defensive Stance.', false, null, NEW],
+      ['Improved Shield Bash', 0, 2, 4, 3, 'ability_warrior_shieldbash', 'Shield Bash silences the target for 3 sec.'],
+      ['Improved Shield Wall', 0, 2, 5, 1, 'ability_warrior_shieldwall', 'Shield Wall cooldown reduced by 11 min.'],
+      ['Concussion Blow', 0, 1, 5, 2, 'ability_thunderbolt', 'Stuns the target for 5 sec.'],
+      ['Focused Rage', 0, 3, 5, 3, 'ability_warrior_focusedrage', 'Offensive abilities cost 3 less rage.', false, null, NEW],
+      ['Bastion', 0, 5, 6, 3, 'inv_shield_04', '+10% damage dealt while a shield is equipped.'],
+      ['Shield Slam', 0, 1, 7, 2, 'inv_shield_05', 'Slam the target with your shield; 50% chance to dispel 1 magic effect. Very high threat.', false, 'Concussion Blow'],
+    ]},
+  ];
+
+  const treePoints = tree => tree.talents.reduce((n, t) => n + t[1], 0);
+  const treeHtml = tree => {
+    let cells = '';
+    for (const [name, pts, max, row, col, icon, desc, sim, req, isNew] of tree.talents) {
+      const state = pts === 0 ? 'empty' : pts === max ? 'full' : 'partial';
+      if (req) {
+        const from = tree.talents.find(t => t[0] === req);
+        cells += `<div class="tlink ${pts ? 'on' : ''}" style="grid-column:${col};grid-row:${from[3]} / ${row + 1}"></div>`;
+      }
+      const tip = `${name} (${pts}/${max})${isNew ? ' - new in Forever' : ''}\n${desc}` +
+        (pts ? `\n${sim ? 'Simulated' : 'No effect in this simulation'}` : '');
+      cells += `<div class="tnode ${state}" style="grid-column:${col};grid-row:${row};background-image:url(${iconUrl(icon)})" title="${tip}">` +
+        (isNew ? '<i>new</i>' : '') + `<span>${pts}/${max}</span></div>`;
+    }
+    return `<div class="tree"><h2>${tree.name} <span class="dim">(${treePoints(tree)})</span></h2><div class="tgrid">${cells}</div></div>`;
+  };
+
+  const taken = TREES.flatMap(tree => tree.talents.filter(t => t[1] > 0));
+  $('tab-talents').innerHTML =
+    `<div class="trees">${TREES.map(treeHtml).join('')}</div>` +
+    `<h2>Talents taken</h2><table>` +
+    taken.map(([name, pts, max, , , icon, desc, sim]) =>
+      `<tr><td style="width:36px"><img class="talent-icon" src="${iconUrl(icon)}" alt=""></td>` +
+      `<td><b>${name}</b><div class="dim">${desc}</div></td><td class="rank">${pts} / ${max}</td>` +
+      `<td><span class="tag ${sim ? 'sim' : 'off'}">${sim ? 'Simulated' : 'No effect here'}</span></td></tr>`).join('') +
+    `</table>` +
+    `<footer>${TREES.map(treePoints).join(' / ')} (51 points). WoW Forever beta talent trees; talents are fixed, hover one for details. ` +
+    `"No effect here" means the talent is taken but does nothing in this simulation.</footer>`;
+}
+
+document.addEventListener('keydown', e => {
+  if (e.repeat || e.ctrlKey || e.altKey || e.metaKey) return;
+  const a = ABILITIES.find(a => a.key === e.key);
+  if (a) press(a);
+});
+
+$('footer').textContent =
+  `WoW Forever dual wield fury in Berserker Stance against a level 63 boss. ` +
+  `Press Start fight, then use keys 1-9 and 0 or click to use abilities. See the Gear and Talents tabs for the setup.`;
+
+function render() {
+  arenaEl.classList.toggle('idle', !S.started);
+  document.querySelectorAll('.stance').forEach(btn => btn.classList.toggle('active', btn.dataset.stance === S.stance));
+  const hpPct = S.hp / CFG.targetHp * 100;
+  $('hpfill').style.width = hpPct + '%';
+  $('hpbar').classList.toggle('execute', S.hp <= CFG.targetHp * CFG.executeRange);
+  $('hptext').textContent = `${Math.ceil(S.hp).toLocaleString()} / ${CFG.targetHp.toLocaleString()} (${Math.ceil(hpPct)}%)`;
+  $('ragefill').style.width = S.rage + '%';
+  $('ragetext').textContent = Math.floor(S.rage) + ' / 100';
+  $('mhbar').style.width = S.mhProg * 100 + '%';
+  $('ohbar').style.width = S.ohProg * 100 + '%';
+
+  for (const a of ABILITIES) {
+    const cdLeft = (S.ready[a.id] || 0) - S.t;
+    const gcdLeft = a.gcd ? S.gcdUntil - S.t : 0;
+    let frac = 0;
+    if (cdLeft > 0 && cdLeft >= gcdLeft) frac = cdLeft / a.cd;
+    else if (gcdLeft > 0) frac = gcdLeft / CFG.gcd;
+    a.mask.style.height = frac * 100 + '%';
+    a.cdText.textContent = cdLeft > 0 ? fmtTime(cdLeft) : '';
+    a.el.classList.toggle('norage', !S.started || S.rage < a.cost || !!(a.usable && !a.usable()));
+    a.el.classList.toggle('queued', S.queued === a.id);
+    if (a.proc) a.el.classList.toggle('proc', S.started && a.usable());
+  }
+
+  const buffs = [];
+  if (S.t < S.buffs.reck) buffs.push(['ability_criticalstrike', `Recklessness ${fmtTime(S.buffs.reck - S.t)}`]);
+  if (S.t < S.buffs.dw) buffs.push(['spell_shadow_deathpact', `Death Wish ${fmtTime(S.buffs.dw - S.t)}`]);
+  if (S.t < S.buffs.brage) buffs.push(['spell_nature_ancestralguardian', `Berserker Rage ${fmtTime(S.buffs.brage - S.t)}`]);
+  if (S.bloodrageTicks > 0) buffs.push(['ability_racial_bloodrage', `Bloodrage ${S.bloodrageTicks}`]);
+  if (S.t < S.buffs.crusMH) buffs.push(['spell_holy_blessingofstrength', `Holy Strength ${fmtTime(S.buffs.crusMH - S.t)}`]);
+  if (S.t < S.buffs.crusOH) buffs.push(['spell_holy_blessingofstrength', `Holy Strength (off hand) ${fmtTime(S.buffs.crusOH - S.t)}`]);
+  if (S.t < S.buffs.potion) buffs.push(['inv_potion_41', `Mighty Rage ${fmtTime(S.buffs.potion - S.t)}`]);
+  if (S.flurry > 0) buffs.push(['ability_ghoulfrenzy', `Flurry (${S.flurry})`]);
+  if (S.woundTicks > 0) buffs.push(['ability_backstab', `Deep Wounds (${S.woundTicks})`]);
+  const html = buffs.map(([icon, text]) => `<div class="buff"><img src="${iconUrl(icon)}" alt="">${text}</div>`).join('');
+  if ($('buffs').innerHTML !== html) $('buffs').innerHTML = html;
+
+  $('meter').innerHTML = `DPS <b>${S.t > 0 ? (S.totalDamage / S.t).toFixed(1) : '0.0'}</b> · ` +
+    `Damage <b>${S.totalDamage.toLocaleString()}</b> · Time <b>${fmtTime(S.t)}</b>`;
+}
+
+function frame(now) {
+  // Cap the step so a backgrounded tab pauses rather than fast-forwarding
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+  if (S.started && !S.over) tick(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
