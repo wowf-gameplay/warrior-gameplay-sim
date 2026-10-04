@@ -153,6 +153,22 @@
   }
   #summary.show { display: block; }
   .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .wcl-meta { font-size: 12px; color: #b9ad92; margin: 4px 0 2px; }
+  .wcl-meta b { color: #ffd100; }
+  table.wcl { font-size: 12px; background: #0b0b0b; border: 1px solid #333; margin-top: 8px; }
+  table.wcl th { background: #1a1a1a; color: #e1f2f5; font-size: 11px; padding: 5px 6px; border-bottom: 1px solid #333; white-space: nowrap; }
+  table.wcl td { padding: 3px 6px; border-bottom: 1px solid #1c1c1c; color: #ddd; white-space: nowrap; }
+  table.wcl tr:nth-child(even) td { background: #121212; }
+  table.wcl tr:hover td { background: #1e2a30; }
+  .wcl-name { color: #ffe680 !important; font-weight: 600; }
+  .wcl-name img { width: 18px; height: 18px; vertical-align: middle; margin-right: 6px; border: 1px solid #444; }
+  .wcl-amount { width: 34%; }
+  .wcl-amount > span { display: inline-block; vertical-align: middle; }
+  .wcl-pct { width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+  .wcl-bar { width: calc(100% - 110px); height: 12px; margin: 0 6px; }
+  .wcl-bar i { display: block; height: 100%; background: #c79c6e; border-radius: 1px; }
+  .wcl-total { width: 50px; text-align: right; font-variant-numeric: tabular-nums; }
+  .wcl-totalrow td { background: #1a1a1a !important; font-weight: 700; color: #fff; border-top: 1px solid #333; }
   .reset {
     display: block; width: 100%; margin-top: 14px; padding: 14px; cursor: pointer;
     font: inherit; font-size: 20px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase;
@@ -267,7 +283,7 @@
 
   <div id="tab-combat" class="tab active">
   <div id="summary">
-    <h2>Fight over &mdash; the dummy is dead</h2>
+    <h2>Damage Done</h2>
     <div id="summary-body"></div>
     <button class="reset">Reset</button>
   </div>
@@ -813,23 +829,55 @@ for (const a of ABILITIES) {
 }
 
 // --- Fight overview and reset ---
+// Display name and icon for each damage source in the end-of-fight table
+function sourceInfo(name) {
+  const ability = ABILITIES.find(x => x.name === name);
+  if (ability) return { label: name, icon: ability.icon };
+  const mhIcon = GEAR.find(g => g.slot === 'Main hand').icon, ohIcon = GEAR.find(g => g.slot === 'Off hand').icon;
+  return {
+    'Main hand': { label: 'Melee', icon: mhIcon },
+    'Off hand': { label: 'Melee (Off Hand)', icon: ohIcon },
+    'Main hand (Windfury)': { label: 'Windfury Attack', icon: 'spell_nature_windfury' },
+    'Main hand (Ironfoe)': { label: 'Ironfoe (Extra Attack)', icon: mhIcon },
+    'Whirlwind (off hand)': { label: 'Whirlwind (Off Hand)', icon: 'ability_whirlwind' },
+    'Deep Wounds': { label: 'Deep Wounds', icon: 'ability_backstab' },
+    'Dragonbreath Chili': { label: 'Dragonbreath Chili', icon: 'inv_drink_17' },
+  }[name] || { label: name, icon: 'inv_misc_questionmark' };
+}
+
+// Damage Done table laid out like a Warcraft Logs report
 function endFight() {
   S.over = true;
   S.hp = 0;
-  const tile = (label, value) => `<div class="stat"><b>${value}</b>${label}</div>`;
-  const rows = Object.entries(S.stats).sort((a, b) => b[1].dmg - a[1].dmg).map(([name, st]) =>
-    `<tr><td>${name}</td><td class="num">${st.dmg.toLocaleString()}</td>` +
-    `<td class="num">${(st.dmg / S.totalDamage * 100).toFixed(1)}%</td><td class="num">${(st.dmg / S.t).toFixed(1)}</td>` +
-    `<td class="num">${st.hits}</td><td class="num">${st.hits ? (st.crits / st.hits * 100).toFixed(0) + '%' : '-'}</td>` +
-    `<td class="num">${st.avoided}</td></tr>`).join('');
+  const n = v => Math.round(v).toLocaleString();
+  const pct = (x, of) => of ? (x / of * 100).toFixed(1) + '%' : '-';
+  const sources = Object.entries(S.stats).sort((x, y) => y[1].dmg - x[1].dmg);
+  const top = sources.length ? sources[0][1].dmg : 1;
+  let casts = 0, hits = 0, crits = 0, avoided = 0;
+  const rows = sources.map(([name, st]) => {
+    const info = sourceInfo(name);
+    const isDot = name === 'Deep Wounds';
+    const stCasts = st.hits + st.avoided;
+    if (!isDot) { casts += stCasts; avoided += st.avoided; }
+    hits += st.hits; crits += st.crits;
+    return `<tr><td class="wcl-name"><img src="${iconUrl(info.icon)}" alt="">${info.label}</td>` +
+      `<td class="wcl-amount"><span class="wcl-pct">${pct(st.dmg, S.totalDamage)}</span>` +
+      `<span class="wcl-bar"><i style="width:${st.dmg / top * 100}%"></i></span><span class="wcl-total">${n(st.dmg)}</span></td>` +
+      `<td class="num">${isDot ? '-' : stCasts}</td><td class="num">${isDot || !stCasts ? '-' : n(st.dmg / stCasts)}</td>` +
+      `<td class="num">${st.hits}</td><td class="num">${st.hits ? n(st.dmg / st.hits) : '-'}</td>` +
+      `<td class="num">${isDot ? '-' : pct(st.crits, st.hits)}</td><td class="num">${isDot ? '-' : pct(st.avoided, stCasts)}</td>` +
+      `<td class="num">${(st.dmg / S.t).toFixed(1)}</td></tr>`;
+  }).join('');
   $('summary-body').innerHTML =
-    `<div class="statgrid">` +
-      tile('Fight length', fmtTime(S.t)) + tile('DPS', (S.totalDamage / S.t).toFixed(1)) +
-      tile('Total damage', S.totalDamage.toLocaleString()) +
-      tile('Rage gained', Math.round(S.rageGained)) + tile('Rage lost to cap', Math.round(S.rageWasted)) +
-    `</div>` +
-    `<table><tr><th>Source</th><th class="num">Damage</th><th class="num">Share</th><th class="num">DPS</th>` +
-    `<th class="num">Hits</th><th class="num">Crit</th><th class="num">Miss / dodge</th></tr>${rows}</table>`;
+    `<div class="wcl-meta">Fight length <b>${fmtTime(S.t)}</b> · Rage gained <b>${Math.round(S.rageGained)}</b> · ` +
+    `Rage lost (cap and stance changes) <b>${Math.round(S.rageWasted)}</b></div>` +
+    `<table class="wcl"><tr><th>Name</th><th>Amount</th><th class="num">Casts</th><th class="num">Avg Cast</th>` +
+    `<th class="num">Hits</th><th class="num">Avg Hit</th><th class="num">Crit %</th><th class="num">Miss %</th><th class="num">DPS</th></tr>` +
+    rows +
+    `<tr class="wcl-totalrow"><td>Total</td><td class="wcl-amount"><span class="wcl-pct">100%</span><span class="wcl-bar"></span>` +
+    `<span class="wcl-total">${n(S.totalDamage)}</span></td><td class="num">${casts}</td><td class="num">-</td>` +
+    `<td class="num">${hits}</td><td class="num">-</td><td class="num">${pct(crits, hits)}</td><td class="num">${pct(avoided, casts)}</td>` +
+    `<td class="num">${(S.totalDamage / S.t).toFixed(1)}</td></tr></table>`;
   $('summary').classList.add('show');
 }
 
