@@ -109,7 +109,8 @@
   .stance.active { opacity: 1; color: #ffd100; font-weight: 700; border-color: #ffd100; box-shadow: 0 0 8px rgba(255, 209, 0, .5); }
   .ability.proc { border-color: #ffe100; animation: proc .6s infinite alternate; }
   @keyframes proc { from { box-shadow: 0 0 4px #ffe100; } to { box-shadow: 0 0 14px #ffe100, inset 0 0 10px rgba(255,225,0,.5); } }
-  #buffs { min-height: 30px; margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
+  #buffs { height: 62px; overflow: hidden; margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; align-content: flex-start; }
+  .buff { height: 28px; }
   .buff {
     font-size: 12px; padding: 4px 8px; border-radius: 4px; background: #2b2318;
     border: 1px solid #6b5a3a; color: #ffd100; font-variant-numeric: tabular-nums;
