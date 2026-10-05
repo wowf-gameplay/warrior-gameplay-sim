@@ -235,6 +235,19 @@
   }
   .tlink { width: 4px; justify-self: center; background: #4a4338; margin: 20px 0; }
   .tlink.on { background: #ffd100; }
+  #talent-tip {
+    display: none; position: fixed; z-index: 50; max-width: 300px; padding: 9px 11px; pointer-events: none;
+    background: #0d0b08; border: 1px solid #c79c6e; border-radius: 6px; box-shadow: 0 4px 14px rgba(0, 0, 0, .7);
+    font-size: 12px; line-height: 1.4; color: #e8dcc0;
+  }
+  #talent-tip .tip-head { display: flex; justify-content: space-between; gap: 14px; align-items: baseline; }
+  #talent-tip .tip-head b { font-size: 14px; color: #fff; }
+  #talent-tip .tip-head span { color: #b9ad92; white-space: nowrap; }
+  #talent-tip .tip-new { color: #7fdc6f; font-size: 11px; }
+  #talent-tip .tip-desc { color: #ffd100; margin-top: 5px; }
+  #talent-tip .tip-status { margin-top: 6px; font-size: 11px; color: #8f846e; }
+  #talent-tip .tip-status.sim { color: #7fdc6f; }
+  .tnode { cursor: help; }
   .tag.sim { background: #1f3a1c; color: #7fdc6f; } .tag.off { background: #2b2318; color: #8f846e; }
   .ability .cdmask { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: rgba(0,0,0,.72); pointer-events: none; }
   .ability .cdtext {
@@ -1095,25 +1108,48 @@ function renderResultStats() {
         const from = tree.talents.find(t => t[0] === req);
         cells += `<div class="tlink ${pts ? 'on' : ''}" style="grid-column:${col};grid-row:${from[3]} / ${row + 1}"></div>`;
       }
-      const tip = `${name} (${pts}/${max})${isNew ? ' - new in Forever' : ''}\n${desc}` +
-        (pts ? `\n${sim ? 'Simulated' : 'No effect in this simulation'}` : '');
-      cells += `<div class="tnode ${state}" style="grid-column:${col};grid-row:${row};background-image:url(${iconUrl(icon)})" title="${tip}">` +
+      const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      cells += `<div class="tnode ${state}" style="grid-column:${col};grid-row:${row};background-image:url(${iconUrl(icon)})" ` +
+        `data-name="${esc(name)}" data-pts="${pts}" data-max="${max}" data-desc="${esc(desc)}" data-sim="${sim ? 1 : ''}" data-isnew="${isNew ? 1 : ''}">` +
         (isNew ? '<i>new</i>' : '') + `<span>${pts}/${max}</span></div>`;
     }
     return `<div class="tree"><h2>${tree.name} <span class="dim">(${treePoints(tree)})</span></h2><div class="tgrid">${cells}</div></div>`;
   };
 
-  const taken = TREES.flatMap(tree => tree.talents.filter(t => t[1] > 0));
   $('tab-talents').innerHTML =
     `<div class="trees">${TREES.map(treeHtml).join('')}</div>` +
-    `<h2>Talents taken</h2><table>` +
-    taken.map(([name, pts, max, , , icon, desc, sim]) =>
-      `<tr><td style="width:36px"><img class="talent-icon" src="${iconUrl(icon)}" alt=""></td>` +
-      `<td><b>${name}</b><div class="dim">${desc}</div></td><td class="rank">${pts} / ${max}</td>` +
-      `<td><span class="tag ${sim ? 'sim' : 'off'}">${sim ? 'Simulated' : 'No effect here'}</span></td></tr>`).join('') +
-    `</table>` +
-    `<footer>${TREES.map(treePoints).join(' / ')} (51 points). WoW Forever beta talent trees; talents are fixed, hover one for details. ` +
-    `"No effect here" means the talent is taken but does nothing in this simulation.</footer>`;
+    `<footer>${TREES.map(treePoints).join(' / ')} (51 points). WoW Forever beta talent trees; talents are fixed. ` +
+    `Hover a talent to see what it does and whether this simulation models it.</footer>`;
+}
+
+// --- Talent tooltips: hover a talent in the tree ---
+{
+  const tip = document.createElement('div');
+  tip.id = 'talent-tip';
+  document.body.appendChild(tip);
+  let current = null;
+  document.addEventListener('mousemove', e => {
+    const node = e.target.closest ? e.target.closest('.tnode') : null;
+    if (!node) { tip.style.display = 'none'; current = null; return; }
+    if (node !== current) {
+      current = node;
+      const d = node.dataset;
+      const taken = Number(d.pts) > 0;
+      tip.innerHTML = `<div class="tip-head"><b></b><span>Rank ${d.pts}/${d.max}</span></div>` +
+        (d.isnew ? '<div class="tip-new">New in Forever</div>' : '') + '<div class="tip-desc"></div>' +
+        `<div class="tip-status ${taken && d.sim ? 'sim' : ''}">${!taken ? 'Not taken' : d.sim ? 'Simulated' : 'No effect in this simulation'}</div>`;
+      tip.querySelector('b').textContent = d.name;
+      tip.querySelector('.tip-desc').textContent = d.desc;
+      tip.style.display = 'block';
+    }
+    // Keep the tooltip beside the cursor and inside the window
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    let x = e.clientX + 16, y = e.clientY + 16;
+    if (x + w > window.innerWidth - 8) x = e.clientX - w - 12;
+    if (y + h > window.innerHeight - 8) y = e.clientY - h - 12;
+    tip.style.left = Math.max(8, x) + 'px';
+    tip.style.top = Math.max(8, y) + 'px';
+  });
 }
 
 // --- Keybinds: editable, saved in this browser ---
