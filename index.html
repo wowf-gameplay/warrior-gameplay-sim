@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WoW Forever Fury Warrior Simulator</title>
+<title>WoW Forever Warrior Simulator</title>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -307,6 +307,32 @@
   table:not(.wcl) th { color: #9aa4b5; text-transform: uppercase; letter-spacing: .5px; font-size: 11px; }
   footer { color: #667089; }
 
+  .castbar { position: relative; height: 16px; border: 1px solid #2a3242; }
+  #castbar { background: linear-gradient(#f5c451, #c79100); }
+  #casttext {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-style: normal; font-size: 11px; font-weight: 700; color: #fff; text-shadow: 1px 1px 2px #000;
+  }
+  #specbar { display: flex; gap: 6px; margin-top: 10px; }
+  #specbar button {
+    flex: 1; font: inherit; font-size: 14px; font-weight: 700; padding: 8px; cursor: pointer;
+    background: #171b24; color: #9aa4b5; border: 2px solid #2f394c; border-radius: 6px;
+  }
+  #specbar button:hover { border-color: var(--accent); }
+  #specbar button.active { background: #2b2219; color: var(--accent); border-color: var(--accent); }
+  .castbar { position: relative; height: 16px; border: 1px solid #2a3242; }
+  #castbar { background: linear-gradient(#f5c451, #c79100); }
+  #casttext {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-style: normal; font-size: 11px; font-weight: 700; color: #fff; text-shadow: 1px 1px 2px #000;
+  }
+  #specbar { display: flex; gap: 6px; margin-top: 10px; }
+  #specbar button {
+    flex: 1; font: inherit; font-size: 14px; font-weight: 700; padding: 8px; cursor: pointer;
+    background: #171b24; color: #9aa4b5; border: 2px solid #2f394c; border-radius: 6px;
+  }
+  #specbar button:hover { border-color: var(--accent); }
+  #specbar button.active { background: #2b2219; color: var(--accent); border-color: var(--accent); }
   .home { display: inline-block; margin-bottom: 8px; font-size: 12px; color: #9aa4b5; text-decoration: none; }
   .home:hover { color: var(--accent); }
 </style>
@@ -316,7 +342,7 @@
 <div id="app">
   <a class="home" href="https://wowf-gameplay.github.io/">&larr; All WoW Forever sims</a>
   <header>
-    <h1>WoW Forever &mdash; Fury Warrior (60)</h1>
+    <h1>WoW Forever &mdash; Warrior (60)</h1>
     <div id="meter"></div>
   </header>
 
@@ -326,6 +352,10 @@
     <button data-tab="talents">Talents</button>
     <button data-tab="stats">Stats</button>
   </nav>
+  <div id="specbar">
+    <button data-spec="fury">Fury (dual wield)</button>
+    <button data-spec="arms">Arms (two-handed)</button>
+  </div>
 
   <div id="tab-combat" class="tab active">
   <div id="summary">
@@ -354,12 +384,13 @@
 
   <div id="stances">
     Stance
-    <button class="stance" data-stance="battle" title="Battle Stance. Overpower switches here and back automatically."><img src="https://wow.zamimg.com/images/wow/icons/large/ability_warrior_offensivestance.jpg" alt="">Battle</button>
+    <button class="stance" data-stance="battle" title="Battle Stance. Required for Overpower, Rend and Spearing Strike; Overpower switches here and back automatically from Berserker Stance."><img src="https://wow.zamimg.com/images/wow/icons/large/ability_warrior_offensivestance.jpg" alt="">Battle</button>
     <button class="stance" data-stance="berserker" title="Berserker Stance. +3% crit. Required for Whirlwind, Berserker Rage and Recklessness."><img src="https://wow.zamimg.com/images/wow/icons/large/ability_racial_avatar.jpg" alt="">Berserker</button>
   </div>
   <div id="buffs"></div>
   <div class="swing"><span>Main hand</span><div class="swingbar"><div id="mhbar"></div></div></div>
-  <div class="swing"><span>Off hand</span><div class="swingbar"><div id="ohbar"></div></div></div>
+  <div class="swing" id="ohswing"><span>Off hand</span><div class="swingbar"><div id="ohbar"></div></div></div>
+  <div class="swing"><span>Cast</span><div class="swingbar castbar"><div id="castbar"></div><em id="casttext"></em></div></div>
 
   <div id="ragebar"><div id="ragefill"></div><div id="ragetext"></div></div>
   <div id="bar"></div>
@@ -380,57 +411,106 @@
 
 <script>
 // ---------------------------------------------------------------------------
-// Character / target setup. Tweak these to change gear.
+// Character / target setup. Gear, enchants and talents follow the MythicSim WoW Forever
+// tier-list presets: "DPS Warrior" (dual wield fury) and "Arms Warrior" (two-handed sword).
 // ---------------------------------------------------------------------------
 const BASE = { race: 'Human', str: 120, agi: 80, ap: 160 };  // level 60 warrior, naked
 const BATTLE_SHOUT_AP = 139;                                 // Forever rank 7
 const CRIT_RATING_PER_PCT = 14, HIT_RATING_PER_PCT = 10;     // Forever item ratings at level 60
+const store = {
+  get(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); } catch { return fallback; } },
+  set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} },
+};
 
-// Gear and enchants from the MythicSim WoW Forever "DPS Warrior" tier-list preset (both trinket slots empty).
 // ench: stats added by the enchant on that slot.
-const GEAR = [
-  { slot: 'Head',      name: 'Lionheart Helm',          q: 'epic', icon: 'inv_helmet_36', str: 18, hitRating: 20, critRating: 28, enchant: '+8 Strength', ench: { str: 8 } },
-  { slot: 'Neck',      name: 'Imperial Jewel',          q: 'rare', icon: 'inv_misc_gem_sapphire_01', ap: 32 },
-  { slot: 'Shoulders', name: 'Truestrike Shoulders',    q: 'rare', icon: 'inv_shoulder_10', ap: 24, hitRating: 20 },
-  { slot: 'Back',      name: 'Cape of the Black Baron', q: 'rare', icon: 'inv_misc_cape_20', agi: 15, ap: 20, enchant: '+3 Agility', ench: { agi: 3 } },
-  { slot: 'Chest',     name: 'Savage Gladiator Chain',  q: 'epic', icon: 'inv_chest_chain_15', str: 16, agi: 14, critRating: 21, enchant: '+4 All Stats', ench: { str: 4, agi: 4 } },
-  { slot: 'Wrist',     name: 'Battleborn Armbraces',    q: 'rare', icon: 'inv_bracer_17', hitRating: 10, critRating: 14, enchant: '+9 Strength', ench: { str: 9 } },
-  { slot: 'Hands',     name: 'Death Grips',             q: 'rare', icon: 'inv_gauntlets_13', str: 22, hitRating: 5, enchant: '+7 Strength', ench: { str: 7 } },
-  { slot: 'Waist',     name: "Marksman's Girdle",       q: 'rare', icon: 'inv_belt_18', agi: 21, hitRating: 10 },
-  { slot: 'Legs',      name: 'Warbear Woolies',         q: 'rare', icon: 'inv_pants_wolf', str: 28, agi: 18, enchant: '+8 Strength', ench: { str: 8 } },
-  { slot: 'Feet',      name: 'Bloodmail Boots',         q: 'rare', icon: 'inv_boots_01', str: 9, agi: 9, hitRating: 10, enchant: '+7 Agility', ench: { agi: 7 } },
-  { slot: 'Ring',      name: 'Tarnished Elven Ring',    q: 'rare', icon: 'inv_jewelry_ring_13', agi: 15, hitRating: 10 },
-  { slot: 'Ring',      name: 'Blackstone Ring',         q: 'rare', icon: 'inv_jewelry_ring_17', ap: 20, hitRating: 10 },
-  { slot: 'Trinket',   name: null },
-  { slot: 'Trinket',   name: null },
-  { slot: 'Main hand', name: 'Ironfoe',                 q: 'epic', icon: 'spell_frost_frostbrand', weapon: { min: 73, max: 136, speed: 2.4, type: 'Mace' },
-    enchant: 'Crusader', note: 'Chance on hit: 2 extra attacks' },
-  { slot: 'Off hand',  name: "Cho'Rush's Blade",        q: 'rare', icon: 'inv_weapon_shortblade_04', ap: 28, weapon: { min: 67, max: 125, speed: 2.4, type: 'Sword' },
-    enchant: 'Crusader' },
-  { slot: 'Ranged',    name: "Satyr's Bow",             q: 'rare', icon: 'inv_weapon_bow_03', agi: 3, hitRating: 10 },
-];
+const ITEMS = {
+  lionheart:  { slot: 'Head',      name: 'Lionheart Helm',          q: 'epic', icon: 'inv_helmet_36', str: 18, hitRating: 20, critRating: 28, enchant: '+8 Strength', ench: { str: 8 } },
+  jewel:      { slot: 'Neck',      name: 'Imperial Jewel',          q: 'rare', icon: 'inv_misc_gem_sapphire_01', ap: 32 },
+  truestrike: { slot: 'Shoulders', name: 'Truestrike Shoulders',    q: 'rare', icon: 'inv_shoulder_10', ap: 24, hitRating: 20 },
+  baron:      { slot: 'Back',      name: 'Cape of the Black Baron', q: 'rare', icon: 'inv_misc_cape_20', agi: 15, ap: 20, enchant: '+3 Agility', ench: { agi: 3 } },
+  savage:     { slot: 'Chest',     name: 'Savage Gladiator Chain',  q: 'epic', icon: 'inv_chest_chain_15', str: 16, agi: 14, critRating: 21, enchant: '+4 All Stats', ench: { str: 4, agi: 4 } },
+  battleborn: { slot: 'Wrist',     name: 'Battleborn Armbraces',    q: 'rare', icon: 'inv_bracer_17', hitRating: 10, critRating: 14, enchant: '+9 Strength', ench: { str: 9 } },
+  deathgrips: { slot: 'Hands',     name: 'Death Grips',             q: 'rare', icon: 'inv_gauntlets_13', str: 22, hitRating: 5, enchant: '+7 Strength', ench: { str: 7 } },
+  girdle:     { slot: 'Waist',     name: "Marksman's Girdle",       q: 'rare', icon: 'inv_belt_18', agi: 21, hitRating: 10 },
+  woolies:    { slot: 'Legs',      name: 'Warbear Woolies',         q: 'rare', icon: 'inv_pants_wolf', str: 28, agi: 18, enchant: '+8 Strength', ench: { str: 8 } },
+  bloodmail:  { slot: 'Feet',      name: 'Bloodmail Boots',         q: 'rare', icon: 'inv_boots_01', str: 9, agi: 9, hitRating: 10, enchant: '+7 Agility', ench: { agi: 7 } },
+  elven:      { slot: 'Ring',      name: 'Tarnished Elven Ring',    q: 'rare', icon: 'inv_jewelry_ring_13', agi: 15, hitRating: 10 },
+  blackstone: { slot: 'Ring',      name: 'Blackstone Ring',         q: 'rare', icon: 'inv_jewelry_ring_17', ap: 20, hitRating: 10 },
+  trinket:    { slot: 'Trinket',   name: null },
+  ironfoe:    { slot: 'Main hand', name: 'Ironfoe',                 q: 'epic', icon: 'spell_frost_frostbrand', weapon: { min: 73, max: 136, speed: 2.4, type: 'Mace' },
+                enchant: 'Crusader', note: 'Chance on hit: 2 extra attacks' },
+  chorush:    { slot: 'Off hand',  name: "Cho'Rush's Blade",        q: 'rare', icon: 'inv_weapon_shortblade_04', ap: 28, weapon: { min: 67, max: 125, speed: 2.4, type: 'Sword' },
+                enchant: 'Crusader' },
+  blackblade: { slot: 'Two hand',  name: 'Blackblade of Shahram',   q: 'epic', icon: 'inv_sword_29', weapon: { min: 166, max: 250, speed: 3.5, type: 'Sword', twoHand: true },
+                enchant: 'Crusader', note: 'Its Shahram proc is not simulated' },
+  bow:        { slot: 'Ranged',    name: "Satyr's Bow",             q: 'rare', icon: 'inv_weapon_bow_03', agi: 3, hitRating: 10 },
+};
+const gearList = keys => keys.map(k => ITEMS[k]);
+
+const SPECS = {
+  fury: {
+    name: 'Fury', title: 'Fury Warrior', stance: 'berserker', preset: 'DPS Warrior',
+    talents: {
+      'Improved Heroic Strike': 2, 'Improved Rend': 3, 'Improved Tactical Mastery': 5, 'Improved Overpower': 2, 'Anger Management': 1, 'Deep Wounds': 3, 'Impale': 2,
+      'Cruelty': 5, 'Lingering Rage': 3, 'Unbridled Wrath': 5, 'Furious Precision': 3, 'Dual Wield Specialization': 5, 'Raging Blows': 1, 'Improved Execute': 2,
+      'Death Wish': 1, 'Flurry': 5, 'Bloodthirst': 1,
+      'Improved Bloodrage': 2,
+    },
+    gear: gearList(['lionheart', 'jewel', 'truestrike', 'baron', 'savage', 'battleborn', 'deathgrips', 'girdle', 'woolies', 'bloodmail', 'elven', 'blackstone',
+      'trinket', 'trinket', 'ironfoe', 'chorush', 'bow']),
+    bar: ['bt', 'ww', 'hs', 'execute', 'overpower', 'hamstring', 'brage', 'bloodrage', 'dw', 'reck', 'potion'],
+    keys: { bt: '1', ww: '2', hs: '3', execute: '4', overpower: '5', hamstring: '-', brage: '6', bloodrage: '7', dw: '8', reck: '9', potion: '0' },
+    footer: 'WoW Forever dual wield fury in Berserker Stance against a level 63 boss.',
+  },
+  arms: {
+    name: 'Arms', title: 'Arms Warrior', stance: 'battle', preset: 'Arms Warrior',
+    talents: {
+      'Improved Heroic Strike': 3, 'Improved Rend': 3, 'Improved Tactical Mastery': 5, 'Improved Overpower': 2, 'Anger Management': 1, 'Deep Wounds': 3,
+      'Spearing Strike': 1, 'Two-Handed Weapon Specialization': 3, 'Impale': 2, 'Bloodthrill': 5, 'Sweeping Strikes': 1, 'Weaponmaster': 5, 'Improved Slam': 2, 'Mortal Strike': 1,
+      'Booming Voice': 4, 'Cruelty': 5, 'Unbridled Wrath': 5,
+    },
+    gear: gearList(['lionheart', 'jewel', 'truestrike', 'baron', 'savage', 'battleborn', 'deathgrips', 'girdle', 'woolies', 'bloodmail', 'elven', 'blackstone',
+      'trinket', 'trinket', 'blackblade', 'bow']),
+    bar: ['ms', 'overpower', 'slam', 'rend', 'spearing', 'hs', 'execute', 'hamstring', 'bloodrage', 'reck', 'potion'],
+    keys: { ms: '1', overpower: '2', slam: '3', rend: '4', spearing: '5', hs: '6', execute: '7', hamstring: '-', bloodrage: '8', reck: '9', potion: '0' },
+    footer: 'WoW Forever two-handed arms in Battle Stance against a level 63 boss: keep Rend up, Mortal Strike and Overpower on cooldown, Slam and Spearing Strike when there is rage to spare.',
+  },
+};
+let SPEC_ID = store.get('warriorSimSpec', 'fury');
+if (!SPECS[SPEC_ID]) SPEC_ID = 'fury';
+let SPEC = SPECS[SPEC_ID];
+let GEAR = SPEC.gear;
+const T = name => SPEC.talents[name] || 0;   // points in a talent
 
 const gearSum = k => GEAR.reduce((n, g) => n + (g[k] || 0) + (g.ench?.[k] || 0), 0);
-const STATS = { str: BASE.str + gearSum('str'), agi: BASE.agi + gearSum('agi') };
+const STATS = { str: 0, agi: 0 };
+const mhItem = () => GEAR.find(g => g.slot === 'Main hand' || g.slot === 'Two hand');
+const ohItem = () => GEAR.find(g => g.slot === 'Off hand');
+const twoHand = () => !!mhItem().weapon.twoHand;
+const weaponmasterIs = types => T('Weaponmaster') && types.includes(mhItem().weapon.type);
 
-// Unbuffed character-sheet stats from the gear list (talents and Berserker Stance included in crit)
+// Unbuffed character-sheet stats from the gear list (talents included; stance bonuses are not)
 function gearSheet() {
   const str = BASE.str + gearSum('str'), agi = BASE.agi + gearSum('agi');
-  const mh = GEAR.find(g => g.slot === 'Main hand').weapon, oh = GEAR.find(g => g.slot === 'Off hand').weapon;
+  const mh = mhItem().weapon, oh = ohItem()?.weapon;
   return {
     str, agi,
     ap: BASE.ap + 2 * str + gearSum('ap'),   // 2 AP per Strength
-    // 20 Agility per 1% crit, +5% Cruelty, +3% Berserker Stance, +2% Human Sword Specialization with a sword equipped
-    crit: +(agi / 20 + gearSum('critRating') / CRIT_RATING_PER_PCT + 5 + 3 +
+    // 20 Agility per 1% crit, Cruelty, Weaponmaster with an axe or polearm, Human Sword Specialization with a sword equipped
+    crit: +(agi / 20 + gearSum('critRating') / CRIT_RATING_PER_PCT + T('Cruelty') + (weaponmasterIs(['Axe', 'Polearm']) ? 5 : 0) +
       (BASE.race === 'Human' && GEAR.some(g => g.weapon?.type === 'Sword') ? 2 : 0)).toFixed(2),
     hit: gearSum('hitRating') / HIT_RATING_PER_PCT,
-    mhMin: mh.min, mhMax: mh.max, mhSpeed: mh.speed, ohMin: oh.min, ohMax: oh.max, ohSpeed: oh.speed,
+    mhMin: mh.min, mhMax: mh.max, mhSpeed: mh.speed, ohMin: oh ? oh.min : 0, ohMax: oh ? oh.max : 0, ohSpeed: oh ? oh.speed : 0,
   };
 }
-// Custom stats (Stats tab): when on, these replace the gear-derived sheet; buffs still apply on top
-const CUSTOM = { on: false, ...gearSheet() };
-const CUSTOM_STORE = 'warriorSimCustomStats';
-try { Object.assign(CUSTOM, JSON.parse(localStorage.getItem(CUSTOM_STORE) || '{}')); } catch {}
+// Custom stats (Stats tab): when on, these replace the gear-derived sheet; buffs still apply on top. Kept per spec.
+const CUSTOM_ALL = {};
+for (const id of Object.keys(SPECS)) {
+  const save = { SPEC_ID, SPEC, GEAR }; SPEC_ID = id; SPEC = SPECS[id]; GEAR = SPEC.gear;
+  CUSTOM_ALL[id] = { on: false, ...gearSheet(), ...store.get('warriorSimCustomStats_' + id, {}) };
+  ({ SPEC_ID, SPEC, GEAR } = save);
+}
+let CUSTOM = CUSTOM_ALL[SPEC_ID];
 
 const CFG = {
   ap: 0, crit: 0, windfury: false,   // set by applySetup()
@@ -449,24 +529,26 @@ const CFG = {
 
   // Forever normalized rage: white hits give rage from weapon speed, not damage
   ragePerSpeed: 3.46,      // rage per second of weapon speed (one-handed)
+  twoHandRagePerSpeed: 4.5,// ...and two-handed
   offhandRageBase: 0.5,    // off-hand hits give half
   critRageMult: 2,         // crits give 100% more rage
   gcd: 1.5,
-  // Talents (WoW Forever, 18/31/2)
-  offhandMult: 0.625,      // Dual Wield Specialization 5/5
-  abilityCritMult: 2.2,    // Impale 2/2
-  unbridledWrath: 0.6,     // 5/5: 60% chance for 1 rage on weapon hits
-  offhandRageMult: 1.5,    // Dual Wield Specialization 5/5: +50% rage from off-hand attacks
-  offhandHit: 10,          // Furious Precision 3/3: +10% off-hand hit chance
-  flurryHaste: 1.25,       // 5/5
-  angerMgmtInterval: 3,    // 1 rage / 3 sec
   refundOnAvoid: 0.8,
+  // Talent-derived values, set by applySetup()
+  offhandMult: 0.5, abilityCritMult: 2, unbridledWrath: 0, unbridledRage: 1, offhandRageMult: 1, offhandHit: 0, flurryHaste: 1,
+  angerMgmt: false, angerMgmtInterval: 3, deepWounds: 0, twoHandMult: 1, hsCost: 15, executeCost: 15, wwCost: 25, impRend: 1,
+  slamCast: 1.5, slamCd: 18, slamGcd: 1.5, bloodthrill: 0, weaponmasterExtra: 0, weaponmasterArmor: 0, bloodrageMult: 1, stanceRage: 10, overpowerCrit: 0,
   // Stances
-  berserkerCrit: 3,        // Berserker Stance crit bonus (already included in crit)
-  stanceRage: 25,          // rage kept on a stance change: 10 Tactical Mastery + 15 Improved Tactical Mastery 5/5
+  berserkerCrit: 3,        // Berserker Stance crit bonus
   stanceCd: 1,
   overpowerWindow: 5,      // seconds Overpower stays usable after a dodge
-  overpowerCrit: 50,       // Improved Overpower 2/2
+  bloodthrillWindow: 6,    // ...and after a Bloodthrill proc
+  // Abilities (Forever tooltips)
+  msBonus: 160, msCost: 30, msCd: 6,
+  slamBonus: 87, slamCost: 15,
+  rendCost: 10, rendTicks: 7, rendEvery: 3, rendTick: 64, rendApPerTick: 0.02,   // tick base fitted to MythicSim (the tooltip's 21 is far below their results)
+  spearingMult: 0.4, spearingCost: 15, spearingCd: 20,
+  overpowerBonus: 35, hsBonus: 157, executeBase: 600, executePerRage: 15, hamstringDamage: 45,
   // Gear procs
   ironfoeChance: 0.08,     // Ironfoe: chance on main hand hit for 2 extra attacks (fitted to MythicSim's extra swing count)
   crusaderPpm: 1,          // Crusader: procs per minute, per weapon
@@ -493,7 +575,7 @@ const CONSUMABLES = [
   { id: 'jujumight', name: 'Juju Might',                  icon: 'inv_misc_monsterscales_07', desc: '+40 attack power', on: true },
   { id: 'roids',     name: 'R.O.I.D.S.',                  icon: 'inv_stone_15',              desc: '+25 Strength', on: true },
   { id: 'dumplings', name: 'Smoked Desert Dumplings',     icon: 'inv_misc_food_64',          desc: '+20 Strength', on: true },
-  { id: 'stones',    name: 'Elemental Sharpening Stones', icon: 'inv_stone_02',              desc: '+2% crit chance per weapon (+4% total)', on: true },
+  { id: 'stones',    name: 'Elemental Sharpening Stones', icon: 'inv_stone_02',              desc: '+2% crit chance per weapon', on: true },
   { id: 'chili',     name: 'Dragonbreath Chili',          icon: 'inv_drink_17',              desc: 'Melee hits: 5% chance to deal 60 fire damage (10 sec cooldown)', on: true },
 ];
 const BOSS_DEBUFFS = [
@@ -520,18 +602,42 @@ function applySetup() {
   // Buffs add on top of the sheet: 2 AP per Strength gained, 1% crit per 20 Agility gained
   CFG.ap = Math.round(sheet.ap + 2 * (STATS.str - sheet.str) + (on('shout') ? BATTLE_SHOUT_AP : 0) + (on('might') ? 133 : 0) + (on('jujumight') ? 40 : 0));
   CFG.crit = sheet.crit + (STATS.agi - sheet.agi) / 20 +
-    (on('lotp') ? 3 : 0) + (on('mongoose') ? 2 : 0) + (on('stones') ? 4 : 0);
+    (on('lotp') ? 3 : 0) + (on('mongoose') ? 2 : 0) + (on('stones') ? (sheet.ohSpeed ? 4 : 2) : 0);
   CFG.hit = sheet.hit;
   CFG.mh = { min: sheet.mhMin, max: sheet.mhMax, speed: sheet.mhSpeed };
-  CFG.oh = { min: sheet.ohMin, max: sheet.ohMax, speed: sheet.ohSpeed };
+  CFG.oh = sheet.ohSpeed ? { min: sheet.ohMin, max: sheet.ohMax, speed: sheet.ohSpeed } : null;
   CFG.crusaderAp = Math.round(200 * mult);
   CFG.ragePotionAp = Math.round(120 * mult);
   CFG.windfury = on('wf');
   CFG.chili = on('chili');
   // Boss armor after debuffs; damage reduction = armor / (armor + 400 + 85 * attacker level)
   CFG.targetArmor = Math.max(0, CFG.bossArmor - (on('sunder') ? 2250 : 0) - (on('ff') ? 505 : 0) - (on('cor') ? 505 : 0));
-  CFG.armorMult = 1 - CFG.targetArmor / (CFG.targetArmor + 400 + 85 * 60);
+  CFG.armorMult = 1 - CFG.targetArmor * (1 - CFG.weaponmasterArmor) / (CFG.targetArmor * (1 - CFG.weaponmasterArmor) + 400 + 85 * 60);
   CFG.arthas = on('arthas') ? 8 : 0;
+  // Talents
+  CFG.offhandMult = 0.5 * (1 + 0.05 * T('Dual Wield Specialization'));
+  CFG.abilityCritMult = 2 + 0.1 * T('Impale');
+  CFG.unbridledWrath = 0.12 * T('Unbridled Wrath');
+  CFG.unbridledRage = twoHand() ? 2 : 1;
+  CFG.offhandRageMult = 1 + 0.1 * T('Dual Wield Specialization');
+  CFG.offhandHit = T('Furious Precision') * 10 / 3;
+  CFG.flurryHaste = 1 + 0.05 * T('Flurry');
+  CFG.angerMgmt = T('Anger Management') > 0;
+  CFG.deepWounds = 0.2 * T('Deep Wounds');
+  CFG.twoHandMult = twoHand() ? 1 + 0.01 * T('Two-Handed Weapon Specialization') : 1;
+  CFG.hsCost = 15 - T('Improved Heroic Strike');
+  CFG.executeCost = 15 - 2.5 * T('Improved Execute');
+  CFG.wwCost = 25 - 3 * T('Raging Blows');
+  CFG.impRend = 1 + 0.35 / 3 * T('Improved Rend');
+  CFG.slamCast = 1.5 - 0.25 * T('Improved Slam');
+  CFG.slamGcd = 1.5 - 0.25 * T('Improved Slam');
+  CFG.slamCd = 18 - 1.5 * T('Improved Slam');
+  CFG.bloodthrill = 0.04 * T('Bloodthrill');
+  CFG.weaponmasterExtra = weaponmasterIs(['Sword']) ? 0.01 * T('Weaponmaster') : 0;
+  CFG.weaponmasterArmor = weaponmasterIs(['Mace', 'Staff']) ? 0.03 * T('Weaponmaster') : 0;
+  CFG.bloodrageMult = 1 + 0.25 * T('Improved Bloodrage');
+  CFG.stanceRage = 10 + 3 * T('Improved Tactical Mastery');
+  CFG.overpowerCrit = 25 * T('Improved Overpower');
 }
 applySetup();
 
@@ -540,13 +646,13 @@ applySetup();
 // State
 // ---------------------------------------------------------------------------
 const newState = () => ({
-  t: 0, rage: 0, gcdUntil: 0, queued: null,
+  t: 0, rage: 0, gcdUntil: 0, queued: null, cast: null,
   ready: {}, buffs: { dw: 0, reck: 0, brage: 0, crusMH: 0, crusOH: 0, potion: 0 },
   flurry: 0, mhProg: 0, ohProg: 0.5,
   amTimer: 0, bloodrageTicks: 0, bloodrageNext: 0,
-  woundTicks: 0, woundNext: 0,
-  woundTickDmg: 0,
-  stance: 'berserker', stanceReady: 0, returnStance: null, overpowerUntil: 0, chiliReady: 0,
+  woundTicks: 0, woundNext: 0, woundTickDmg: 0,
+  rendTicks: 0, rendNext: 0, rendTickDmg: 0,
+  stance: SPEC.stance, stanceReady: 0, returnStance: null, overpowerUntil: 0, chiliReady: 0,
   totalDamage: 0, hp: CFG.targetHp, started: false, over: false,
   stats: {}, rageGained: 0, rageWasted: 0,   // fight overview
 });
@@ -558,18 +664,20 @@ const addRage = n => {
   const gained = Math.min(n, 100 - S.rage);
   S.rage += gained; S.rageGained += gained; S.rageWasted += n - gained;
 };
-const damageMult = () => CFG.armorMult * (S.t < S.buffs.dw ? 1.2 : 1);
-const critChance = () => Math.max(0, CFG.crit - CFG.critSuppression - (S.stance === 'berserker' ? 0 : CFG.berserkerCrit)) +
+const damageMult = () => CFG.armorMult * CFG.twoHandMult * (S.t < S.buffs.dw ? 1.2 : 1);
+const critChance = () => Math.max(0, CFG.crit - CFG.critSuppression + (S.stance === 'berserker' ? CFG.berserkerCrit : 0)) +
   (S.t < S.buffs.reck ? 100 : 0);
 const ap = () => CFG.ap + CFG.crusaderAp * ((S.t < S.buffs.crusMH) + (S.t < S.buffs.crusOH)) +
   (S.t < S.buffs.potion ? CFG.ragePotionAp : 0);
 const weaponRoll = (w, speedForAp) => rand(w.min, w.max) + ap() / 14 * (speedForAp ?? w.speed);
+const normalizedSpeed = () => twoHand() ? 3.3 : 2.4;
+const rendActive = () => S.rendTicks > 0;
 
 // ---------------------------------------------------------------------------
 // Attack tables
 // ---------------------------------------------------------------------------
 function rollWhite(isOffhand) {
-  const miss = Math.max(0, CFG.baseMiss + CFG.dwMissPenalty - CFG.hit - (isOffhand ? CFG.offhandHit : 0));
+  const miss = Math.max(0, CFG.baseMiss + (CFG.oh ? CFG.dwMissPenalty : 0) - CFG.hit - (isOffhand ? CFG.offhandHit : 0));
   let r = Math.random() * 100;
   if ((r -= miss) < 0) return 'miss';
   if ((r -= CFG.dodge) < 0) return 'dodge';
@@ -583,6 +691,7 @@ function rollYellow(opts = {}) {
   const r = Math.random() * 100;
   if (r < miss) return 'miss';
   if (!opts.noDodge && r < miss + CFG.dodge) return 'dodge';
+  if (opts.noCrit) return 'hit';
   return Math.random() * 100 < critChance() + (opts.critBonus || 0) ? 'crit' : 'hit';
 }
 
@@ -605,12 +714,14 @@ function deal(name, dmg, crit, cls, noFlurry) {
   floater(dmg + (crit ? '!' : ''), cls + (crit ? ' crit' : ''));
   log(`<span class="${cls === 'yellow' ? 'y' : 'w'}">${name} ${crit ? 'crits' : 'hits'} for ${dmg}.</span>`);
   if (crit) {
-    if (!noFlurry) S.flurry = 3;
-    // Deep Wounds 3/3: each crit adds 60% of the main hand's average weapon damage (no attack power),
+    if (!noFlurry && T('Flurry')) S.flurry = 3;
+    // Deep Wounds: each crit adds 60% of the main hand's average weapon damage (no attack power),
     // rolled together with whatever the running bleed still owed, over 4 ticks
-    const owed = S.woundTicks * S.woundTickDmg;
-    S.woundTickDmg = (owed + 0.6 * (CFG.mh.min + CFG.mh.max) / 2) / 4;
-    S.woundTicks = 4; S.woundNext = S.t + 3;
+    if (CFG.deepWounds) {
+      const owed = S.woundTicks * S.woundTickDmg;
+      S.woundTickDmg = (owed + CFG.deepWounds * (CFG.mh.min + CFG.mh.max) / 2) / 4;
+      S.woundTicks = 4; S.woundNext = S.t + 3;
+    }
   }
   targetEl.classList.remove('hit'); void targetEl.offsetWidth; targetEl.classList.add('hit');
   return dmg;
@@ -620,13 +731,12 @@ function avoided(name, res) {
   if (S.over) return;
   statFor(name).avoided++;
   const word = res === 'miss' ? 'Miss' : 'Dodge';
-  if (res === 'dodge') S.overpowerUntil = S.t + CFG.overpowerWindow;
+  if (res === 'dodge') S.overpowerUntil = Math.max(S.overpowerUntil, S.t + CFG.overpowerWindow);
   floater(word, 'avoid');
   log(`${name}: ${word.toLowerCase()}.`);
 }
 
-// Special attack. `cost` has already been paid; part is refunded if avoided.
-// Weapon procs on a landed hit
+// Weapon procs on a landed hit. allowExtra: extra attacks (Windfury, Ironfoe, Weaponmaster) do not trigger more extra attacks.
 function weaponProcs(isOffhand, allowExtra) {
   if (CFG.chili && S.t >= S.chiliReady && !S.over && Math.random() < CFG.chiliChance) {
     S.chiliReady = S.t + CFG.chiliCd;
@@ -639,10 +749,19 @@ function weaponProcs(isOffhand, allowExtra) {
     S.buffs[isOffhand ? 'crusOH' : 'crusMH'] = S.t + 15;
     log('<span class="r">You gain Holy Strength.</span>');
   }
-  if (!isOffhand && allowExtra && Math.random() < CFG.ironfoeChance) {
+  // Bloodthrill: main hand hits on a target with your Rend can enable Overpower
+  if (!isOffhand && CFG.bloodthrill && rendActive() && Math.random() < CFG.bloodthrill) {
+    if (S.t >= S.overpowerUntil) log('<span class="r">Bloodthrill: Overpower is ready.</span>');
+    S.overpowerUntil = Math.max(S.overpowerUntil, S.t + CFG.bloodthrillWindow);
+  }
+  if (!isOffhand && allowExtra && mhItem().name === 'Ironfoe' && Math.random() < CFG.ironfoeChance) {
     log('<span class="r">Ironfoe grants 2 extra attacks.</span>');
     whiteAttack(false, 'Ironfoe');
     whiteAttack(false, 'Ironfoe');
+  }
+  if (!isOffhand && allowExtra && CFG.weaponmasterExtra && Math.random() < CFG.weaponmasterExtra) {
+    log('<span class="r">Weaponmaster grants an extra attack.</span>');
+    whiteAttack(false, 'Weaponmaster');
   }
   if (!isOffhand && allowExtra && CFG.windfury && Math.random() < CFG.windfuryChance) {
     log('<span class="r">Windfury grants an extra attack.</span>');
@@ -650,6 +769,7 @@ function weaponProcs(isOffhand, allowExtra) {
   }
 }
 
+// Special attack. `cost` has already been paid; part is refunded if avoided.
 function yellowAttack(name, base, cost, refund, isOffhand = false, opts) {
   const res = rollYellow(opts);
   if (res === 'miss' || res === 'dodge') {
@@ -661,7 +781,7 @@ function yellowAttack(name, base, cost, refund, isOffhand = false, opts) {
   deal(name, base * damageMult() * (crit ? CFG.abilityCritMult : 1) + CFG.arthas, crit, 'yellow', opts?.noFlurry);
   if (opts?.swing) {
     if (!crit && S.flurry > 0) S.flurry--;
-    if (Math.random() < CFG.unbridledWrath) addRage(1);
+    if (Math.random() < CFG.unbridledWrath) addRage(CFG.unbridledRage);
   }
   weaponProcs(isOffhand, true);
   return true;
@@ -678,18 +798,18 @@ function whiteAttack(isOffhand, extra = false, bonusAp = 0) {
   dmg = deal(name, dmg + CFG.arthas, res === 'crit', 'white');
   if (res !== 'crit' && S.flurry > 0) S.flurry--;
   // Glancing blows give full rage; misses and dodges (returned above) give none
-  addRage(CFG.ragePerSpeed * w.speed * (isOffhand ? CFG.offhandRageBase * CFG.offhandRageMult : 1) *
+  addRage((twoHand() ? CFG.twoHandRagePerSpeed : CFG.ragePerSpeed) * w.speed * (isOffhand ? CFG.offhandRageBase * CFG.offhandRageMult : 1) *
     (res === 'crit' ? CFG.critRageMult : 1));
-  if (Math.random() < CFG.unbridledWrath) addRage(1);
+  if (Math.random() < CFG.unbridledWrath) addRage(CFG.unbridledRage);
   weaponProcs(isOffhand, !extra);
 }
 
 function mainHandSwing() {
   const q = S.queued && ABILITY[S.queued];
   S.queued = null;
-  if (q && S.rage >= q.cost) {
-    S.rage -= q.cost;
-    yellowAttack(q.name, weaponRoll(CFG.mh) + q.bonus, q.cost, true, false, { swing: true });
+  if (q && S.rage >= q.cost()) {
+    S.rage -= q.cost();
+    yellowAttack(q.name, weaponRoll(CFG.mh) + q.bonus, q.cost(), true, false, { swing: true });
   } else {
     whiteAttack(false);
   }
@@ -700,55 +820,76 @@ function offHandSwing() {
 }
 
 // ---------------------------------------------------------------------------
-// Abilities
+// Abilities. cost() is read each time since talents change it per spec.
 // ---------------------------------------------------------------------------
 const ABILITIES = [
-  { id: 'bt', name: 'Bloodthirst', icon: 'spell_nature_bloodlust', key: '1', cost: 30, cd: 6, gcd: true,
+  { id: 'bt', name: 'Bloodthirst', icon: 'spell_nature_bloodlust', cost: () => 30, cd: 6, gcd: true, talent: 'Bloodthirst',
     desc: 'Instantly attack for 45% of your attack power plus 48.',
-    use() { yellowAttack(this.name, 0.45 * ap() + 48, this.cost, true); } },
-  { id: 'ww', name: 'Whirlwind', icon: 'ability_whirlwind', key: '2', cost: 22, cd: 10, gcd: true, stance: 'berserker',
+    use() { yellowAttack(this.name, 0.45 * ap() + 48, this.cost(), true); } },
+  { id: 'ms', name: 'Mortal Strike', icon: 'ability_warrior_savageblow', cost: () => CFG.msCost, cd: CFG.msCd, gcd: true, talent: 'Mortal Strike',
+    desc: 'Weapon damage plus 160 and halves healing on the target for 10 sec. 6 sec cooldown.',
+    use() { yellowAttack(this.name, weaponRoll(CFG.mh, normalizedSpeed()) + CFG.msBonus, this.cost(), true); } },
+  { id: 'ww', name: 'Whirlwind', icon: 'ability_whirlwind', cost: () => CFG.wwCost, cd: 10, gcd: true, stance: 'berserker',
     desc: 'Weapon damage from both weapons. Costs 22 rage (Raging Blows). Requires Berserker Stance.',
     use() {
-      yellowAttack(this.name, weaponRoll(CFG.mh, 2.4), this.cost, false);
-      yellowAttack(this.name + ' (off hand)', weaponRoll(CFG.oh, 2.4) * CFG.offhandMult, this.cost, false, true, { noFlurry: true });
+      yellowAttack(this.name, weaponRoll(CFG.mh, normalizedSpeed()), this.cost(), false);
+      if (CFG.oh) yellowAttack(this.name + ' (off hand)', weaponRoll(CFG.oh, 2.4) * CFG.offhandMult, this.cost(), false, true, { noFlurry: true });
     } },
-  { id: 'hs', name: 'Heroic Strike', icon: 'ability_rogue_ambush', key: '3', cost: 13, queue: true, bonus: 157,
-    desc: 'Next main hand swing deals +157 damage. Costs 13 rage (Improved Heroic Strike 2/3). Press again to cancel.' },
-  { id: 'execute', name: 'Execute', icon: 'inv_sword_48', key: '4', cost: 10, cd: 0, gcd: true,
-    desc: 'Only usable at or below 20% target health. Deals 600 damage plus 15 per extra point of rage, using all your rage. Costs 10 rage (Improved Execute).',
+  { id: 'overpower', name: 'Overpower', icon: 'ability_meleedamage', cost: () => 5, cd: 5, gcd: true, stance: 'battle',
+    desc: 'Only usable within 5 sec after the target dodges, or 6 sec after a Bloodthrill proc. Weapon damage plus 35; cannot be dodged; +50% crit chance (Improved Overpower). Requires Battle Stance: from Berserker Stance it switches there and back 1 sec later.',
+    usable: () => S.t < S.overpowerUntil, proc: true, returnStance: true,
+    use() {
+      S.overpowerUntil = 0;
+      yellowAttack(this.name, weaponRoll(CFG.mh, normalizedSpeed()) + CFG.overpowerBonus, this.cost(), false, false, { noDodge: true, critBonus: CFG.overpowerCrit });
+    } },
+  { id: 'slam', name: 'Slam', icon: 'ability_warrior_decisivestrike', cost: () => CFG.slamCost, cd: 0, gcd: true, cast: true,
+    desc: 'Weapon damage plus 87 after a 1 sec cast (Improved Slam, which also keeps your swing timer running). 15 sec cooldown.',
+    use() { yellowAttack(this.name, weaponRoll(CFG.mh) + CFG.slamBonus, this.cost(), true); } },
+  { id: 'rend', name: 'Rend', icon: 'ability_gouge', cost: () => CFG.rendCost, cd: 0, gcd: true, stance: 'battle',
+    desc: 'Bleeds the target every 3 sec for 21 sec; ticks scale with attack power, can crit, and are 35% stronger (Improved Rend). Enables Bloodthrill. Requires Battle Stance.',
+    use() {
+      const res = rollYellow({ noCrit: true });
+      if (res === 'miss' || res === 'dodge') { avoided(this.name, res); return addRage(this.cost() * CFG.refundOnAvoid); }
+      S.rendTickDmg = (CFG.rendTick + CFG.rendApPerTick * ap()) * CFG.impRend;
+      S.rendTicks = CFG.rendTicks; S.rendNext = S.t + CFG.rendEvery;
+      log('<span class="y">Rend is applied.</span>');
+      weaponProcs(false, true);
+    } },
+  { id: 'spearing', name: 'Spearing Strike', icon: 'inv_spear_01', cost: () => CFG.spearingCost, cd: CFG.spearingCd, gcd: true, stance: 'battle', talent: 'Spearing Strike',
+    desc: '40% weapon damage (120% against Giants, Dragonkin and mounted targets; the dummy is none of those). 20 sec cooldown. Requires Battle Stance.',
+    use() { yellowAttack(this.name, CFG.spearingMult * weaponRoll(CFG.mh), this.cost(), true); } },
+  { id: 'hs', name: 'Heroic Strike', icon: 'ability_rogue_ambush', cost: () => CFG.hsCost, queue: true, bonus: 157,
+    desc: 'Next main hand swing deals +157 damage. Cost reduced by Improved Heroic Strike. Press again to cancel.' },
+  { id: 'execute', name: 'Execute', icon: 'inv_sword_48', cost: () => CFG.executeCost, cd: 0, gcd: true,
+    desc: 'Only usable at or below 20% target health. Deals 600 damage plus 15 per extra point of rage, using all your rage. Requires Battle or Berserker Stance.',
     usable: () => S.hp <= CFG.targetHp * CFG.executeRange,
     use() {
       const extra = S.rage;
       S.rage = 0;
-      yellowAttack(this.name, 600 + 15 * extra, this.cost, true);
+      yellowAttack(this.name, CFG.executeBase + CFG.executePerRage * extra, this.cost(), true);
     } },
-  { id: 'overpower', name: 'Overpower', icon: 'ability_meleedamage', key: '5', cost: 5, cd: 5, gcd: true, stance: 'battle',
-    desc: 'Only usable within 5 sec after the target dodges. Weapon damage plus 35; cannot be dodged; +50% crit chance (Improved Overpower). Switches to Battle Stance, then back to Berserker Stance 1 sec later.',
-    usable: () => S.t < S.overpowerUntil, proc: true, returnStance: true,
-    use() {
-      S.overpowerUntil = 0;
-      yellowAttack(this.name, weaponRoll(CFG.mh, 2.4) + 35, this.cost, false, false, { noDodge: true, critBonus: CFG.overpowerCrit });
-    } },
-  { id: 'hamstring', name: 'Hamstring', icon: 'ability_shockwave', key: '-', cost: 10, cd: 0, gcd: true,
-    desc: 'Deals 45 damage. Cheap instant attack that can trigger weapon procs, Flurry and Deep Wounds.',
-    use() { yellowAttack(this.name, 45, this.cost, true); } },
-  { id: 'brage', name: 'Berserker Rage', icon: 'spell_nature_ancestralguardian', key: '6', cost: 0, cd: 30, gcd: true, stance: 'berserker',
+  { id: 'hamstring', name: 'Hamstring', icon: 'ability_shockwave', cost: () => 10, cd: 0, gcd: true,
+    desc: 'Deals 45 damage. Cheap instant attack that can trigger weapon procs, Flurry, Deep Wounds and Bloodthrill.',
+    use() { yellowAttack(this.name, CFG.hamstringDamage, this.cost(), true); } },
+  { id: 'brage', name: 'Berserker Rage', icon: 'spell_nature_ancestralguardian', cost: () => 0, cd: 30, gcd: true, stance: 'berserker',
     desc: 'Fear immunity and extra rage when taking damage for 10 sec. Generates no rage here: Improved Berserker Rage is not taken and you take no damage.',
     use() { S.buffs.brage = S.t + 10; log('<span class="r">You gain Berserker Rage.</span>'); } },
-  { id: 'bloodrage', name: 'Bloodrage', icon: 'ability_racial_bloodrage', key: '7', cost: 0, cd: 60,
-    desc: 'Generates 15 rage instantly and 15 more over 10 sec (Improved Bloodrage 2/2). Not on the global cooldown.',
-    use() { gainRage(15, this.name); S.bloodrageTicks = 10; S.bloodrageNext = S.t + 1; } },
-  { id: 'dw', name: 'Death Wish', icon: 'spell_shadow_deathpact', key: '8', cost: 10, cd: 180, gcd: true,
+  { id: 'bloodrage', name: 'Bloodrage', icon: 'ability_racial_bloodrage', cost: () => 0, cd: 60,
+    desc: 'Generates 10 rage instantly and 10 more over 10 sec, 50% more with Improved Bloodrage. Not on the global cooldown.',
+    use() { gainRage(Math.round(10 * CFG.bloodrageMult), this.name); S.bloodrageTicks = 10; S.bloodrageNext = S.t + 1; } },
+  { id: 'dw', name: 'Death Wish', icon: 'spell_shadow_deathpact', cost: () => 10, cd: 180, gcd: true, talent: 'Death Wish',
     desc: '+20% physical damage for 30 sec.',
     use() { S.buffs.dw = S.t + 30; log('<span class="r">You gain Death Wish.</span>'); } },
-  { id: 'reck', name: 'Recklessness', icon: 'ability_criticalstrike', key: '9', cost: 0, cd: 1800, gcd: true, stance: 'berserker',
+  { id: 'reck', name: 'Recklessness', icon: 'ability_criticalstrike', cost: () => 0, cd: 1800, gcd: true, stance: 'berserker',
     desc: '+100% crit chance for 15 sec. 30 min cooldown. Requires Berserker Stance.',
     use() { S.buffs.reck = S.t + 15; log('<span class="r">You gain Recklessness.</span>'); } },
-  { id: 'potion', name: 'Mighty Rage Potion', icon: 'inv_potion_41', key: '0', cost: 0, cd: 120,
+  { id: 'potion', name: 'Mighty Rage Potion', icon: 'inv_potion_41', cost: () => 0, cd: 120,
     desc: 'Generates 45 to 75 rage and gives +60 Strength for 20 sec. 2 min cooldown. Not on the global cooldown.',
     use() { S.buffs.potion = S.t + 20; gainRage(Math.round(rand(45, 75)), this.name); } },
 ];
 const ABILITY = Object.fromEntries(ABILITIES.map(a => [a.id, a]));
+const barAbilities = () => SPEC.bar.map(id => ABILITY[id]);
+const cdOf = a => a.id === 'slam' ? CFG.slamCd : a.cd;
 
 function gainRage(n, name) {
   addRage(n);
@@ -769,28 +910,36 @@ function setStance(stance) {
 
 function press(a) {
   if (!S.started || S.over) return;
+  const cost = a.cost();
   if (a.queue) {
     if (S.queued === a.id) S.queued = null;
-    else if (S.rage >= a.cost) S.queued = a.id;
+    else if (S.rage >= cost) S.queued = a.id;
     else deny(a);
     return;
   }
   // Abilities that need another stance switch to it automatically (rage above the kept amount is lost)
   const swap = a.stance && a.stance !== S.stance;
   const rage = swap ? Math.min(S.rage, CFG.stanceRage) : S.rage;
-  if (S.t < (S.ready[a.id] || 0) || (a.gcd && S.t < S.gcdUntil) || rage < a.cost || (a.usable && !a.usable()) ||
+  if (S.cast || S.t < (S.ready[a.id] || 0) || (a.gcd && S.t < S.gcdUntil) || rage < cost || (a.usable && !a.usable()) ||
       (swap && S.t < S.stanceReady)) return deny(a);
   const from = S.stance;
   if (swap) setStance(a.stance);
   // Overpower flips back to the stance it came from as soon as the stance cooldown allows
   if (swap && a.returnStance) S.returnStance = from;
-  S.rage -= a.cost;
-  S.ready[a.id] = S.t + a.cd;
+  S.rage -= cost;
+  S.ready[a.id] = S.t + cdOf(a);
+  if (a.cast) {
+    // Slam: the damage lands when the cast finishes
+    S.gcdUntil = S.t + CFG.slamGcd;
+    S.cast = { ability: a, until: S.t + CFG.slamCast, total: CFG.slamCast };
+    return;
+  }
   if (a.gcd) S.gcdUntil = S.t + CFG.gcd;
   a.use();
 }
 
 function deny(a) {
+  if (!a.el) return;
   a.el.classList.remove('denied'); void a.el.offsetWidth; a.el.classList.add('denied');
 }
 
@@ -802,11 +951,15 @@ function tick(dt) {
 
   if (S.returnStance && S.t >= S.stanceReady) setStance(S.returnStance);
 
-  S.amTimer += dt;
-  while (S.amTimer >= CFG.angerMgmtInterval) { S.amTimer -= CFG.angerMgmtInterval; addRage(1); }
+  if (S.cast && S.t >= S.cast.until) { const a = S.cast.ability; S.cast = null; a.use(); }
+
+  if (CFG.angerMgmt) {
+    S.amTimer += dt;
+    while (S.amTimer >= CFG.angerMgmtInterval) { S.amTimer -= CFG.angerMgmtInterval; addRage(1); }
+  }
 
   while (S.bloodrageTicks > 0 && S.t >= S.bloodrageNext) {
-    addRage(1.5); S.bloodrageTicks--; S.bloodrageNext += 1;
+    addRage(CFG.bloodrageMult); S.bloodrageTicks--; S.bloodrageNext += 1;
   }
 
   // Deep Wounds bleed tick: ignores armor and damage modifiers
@@ -817,12 +970,23 @@ function tick(dt) {
     floater(dmg, 'white bleed');
     log(`<span class="w">Deep Wounds ticks for ${dmg}.</span>`);
   }
+  // Rend bleed tick: ignores armor, can crit
+  while (S.rendTicks > 0 && S.t >= S.rendNext && !S.over) {
+    const crit = Math.random() * 100 < critChance();
+    const dmg = Math.round(S.rendTickDmg * (crit ? 1.5 : 1));
+    S.rendTicks--; S.rendNext += CFG.rendEvery;
+    damageTarget('Rend', dmg, crit);
+    floater(dmg + (crit ? '!' : ''), 'white bleed' + (crit ? ' crit' : ''));
+    log(`<span class="w">Rend ${crit ? 'crits' : 'ticks'} for ${dmg}.</span>`);
+  }
 
   const haste = S.flurry > 0 ? CFG.flurryHaste : 1;
   S.mhProg += dt * haste / CFG.mh.speed;
-  S.ohProg += dt * haste / CFG.oh.speed;
   if (S.mhProg >= 1) { S.mhProg -= 1; mainHandSwing(); }
-  if (S.ohProg >= 1) { S.ohProg -= 1; offHandSwing(); }
+  if (CFG.oh) {
+    S.ohProg += dt * haste / CFG.oh.speed;
+    if (S.ohProg >= 1) { S.ohProg -= 1; offHandSwing(); }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -857,21 +1021,26 @@ function fmtTime(s) {
   return s >= 10 ? Math.ceil(s) : s.toFixed(1);
 }
 
-for (const a of ABILITIES) {
-  const el = document.createElement('button');
-  el.className = 'ability';
-  el.title = `${a.name}\n${a.cost ? a.cost + ' rage' : 'No cost'}${a.cd ? ' · ' + fmtTime(a.cd) + (a.cd >= 60 ? ' min' : ' sec') + ' cooldown' : ''}\n${a.desc}`;
-  el.style.backgroundImage = `url(${iconUrl(a.icon)})`;
-  el.innerHTML = `<span class="key"></span>` +
-    (a.cost ? `<span class="cost">${a.cost}</span>` : '') +
-    `<div class="cdmask"></div><div class="cdtext"></div>`;
-  el.addEventListener('click', () => { if (rebinding) selectRebind(a); else press(a); });
-  a.el = el; a.mask = el.querySelector('.cdmask'); a.cdText = el.querySelector('.cdtext');
-  a.keyEl = el.querySelector('.key'); a.defaultKey = a.key;
-  const slot = document.createElement('div');
-  slot.className = 'slot';
-  slot.append(el, a.name);
-  $('bar').appendChild(slot);
+function buildBar() {
+  $('bar').innerHTML = '';
+  for (const a of ABILITIES) a.el = null;
+  for (const a of barAbilities()) {
+    const el = document.createElement('button');
+    el.className = 'ability';
+    const cd = cdOf(a);
+    el.title = `${a.name}\n${a.cost() ? a.cost() + ' rage' : 'No cost'}${cd ? ' · ' + fmtTime(cd) + (cd >= 60 ? ' min' : ' sec') + ' cooldown' : ''}\n${a.desc}`;
+    el.style.backgroundImage = `url(${iconUrl(a.icon)})`;
+    el.innerHTML = `<span class="key"></span>` +
+      (a.cost() ? `<span class="cost">${a.cost()}</span>` : '') +
+      `<div class="cdmask"></div><div class="cdtext"></div>`;
+    el.addEventListener('click', () => { if (rebinding) selectRebind(a); else press(a); });
+    a.el = el; a.mask = el.querySelector('.cdmask'); a.cdText = el.querySelector('.cdtext');
+    a.keyEl = el.querySelector('.key'); a.defaultKey = SPEC.keys[a.id] || '';
+    const slot = document.createElement('div');
+    slot.className = 'slot';
+    slot.append(el, a.name);
+    $('bar').appendChild(slot);
+  }
 }
 
 // --- Fight overview and reset ---
@@ -879,12 +1048,13 @@ for (const a of ABILITIES) {
 function sourceInfo(name) {
   const ability = ABILITIES.find(x => x.name === name);
   if (ability) return { label: name, icon: ability.icon };
-  const mhIcon = GEAR.find(g => g.slot === 'Main hand').icon, ohIcon = GEAR.find(g => g.slot === 'Off hand').icon;
+  const mhIcon = mhItem().icon, ohIcon = ohItem()?.icon;
   return {
     'Main hand': { label: 'Melee', icon: mhIcon },
     'Off hand': { label: 'Melee (Off Hand)', icon: ohIcon },
     'Main hand (Windfury)': { label: 'Windfury Attack', icon: 'spell_nature_windfury' },
     'Main hand (Ironfoe)': { label: 'Ironfoe (Extra Attack)', icon: mhIcon },
+    'Main hand (Weaponmaster)': { label: 'Weaponmaster (Extra Attack)', icon: 'garrison_weaponupgrade' },
     'Whirlwind (off hand)': { label: 'Whirlwind (Off Hand)', icon: 'ability_whirlwind' },
     'Deep Wounds': { label: 'Deep Wounds', icon: 'ability_backstab' },
     'Dragonbreath Chili': { label: 'Dragonbreath Chili', icon: 'inv_drink_17' },
@@ -895,6 +1065,7 @@ function sourceInfo(name) {
 function endFight() {
   S.over = true;
   S.hp = 0;
+  S.cast = null;
   const n = v => Math.round(v).toLocaleString();
   const pct = (x, of) => of ? (x / of * 100).toFixed(1) + '%' : '-';
   const sources = Object.entries(S.stats).sort((x, y) => y[1].dmg - x[1].dmg);
@@ -902,7 +1073,7 @@ function endFight() {
   let casts = 0, hits = 0, crits = 0, avoided = 0;
   const rows = sources.map(([name, st]) => {
     const info = sourceInfo(name);
-    const isDot = name === 'Deep Wounds';
+    const isDot = name === 'Deep Wounds' || name === 'Rend';
     const stCasts = st.hits + st.avoided;
     if (!isDot) { casts += stCasts; avoided += st.avoided; }
     hits += st.hits; crits += st.crits;
@@ -911,7 +1082,7 @@ function endFight() {
       `<span class="wcl-bar"><i style="width:${st.dmg / top * 100}%"></i></span><span class="wcl-total">${n(st.dmg)}</span></td>` +
       `<td class="num">${isDot ? '-' : stCasts}</td><td class="num">${isDot || !stCasts ? '-' : n(st.dmg / stCasts)}</td>` +
       `<td class="num">${st.hits}</td><td class="num">${st.hits ? n(st.dmg / st.hits) : '-'}</td>` +
-      `<td class="num">${isDot ? '-' : pct(st.crits, st.hits)}</td><td class="num">${isDot ? '-' : pct(st.avoided, stCasts)}</td>` +
+      `<td class="num">${name === 'Deep Wounds' ? '-' : pct(st.crits, st.hits)}</td><td class="num">${isDot ? '-' : pct(st.avoided, stCasts)}</td>` +
       `<td class="num">${(st.dmg / S.t).toFixed(1)}</td></tr>`;
   }).join('');
   $('summary-body').innerHTML =
@@ -962,7 +1133,7 @@ for (const btn of document.querySelectorAll('nav button')) {
 // --- Gear tab ---
 function renderGearTab() {
   const statText = g => [
-    g.weapon && `${g.weapon.min}-${g.weapon.max} damage, ${g.weapon.speed.toFixed(2)} speed`,
+    g.weapon && `${g.weapon.min}-${g.weapon.max} damage, ${g.weapon.speed.toFixed(2)} speed${g.weapon.twoHand ? ', two-handed' : ''}`,
     g.str && `+${g.str} Str`, g.agi && `+${g.agi} Agi`, g.ap && `+${g.ap} AP`,
     g.critRating && `+${(g.critRating / CRIT_RATING_PER_PCT).toFixed(1)}% crit`,
     g.hitRating && `+${(g.hitRating / HIT_RATING_PER_PCT).toFixed(1)}% hit`,
@@ -974,37 +1145,43 @@ function renderGearTab() {
       `<td><span class="q-${g.q}">${g.name}</span>${g.enchant ? `<div class="ench">${g.enchant}</div>` : ''}</td><td>${statText(g)}</td></tr>`
     : `<tr><td class="dim">${g.slot}</td><td></td><td class="dim">Empty</td><td></td></tr>`;
   const active = [...RAID_BUFFS, ...CONSUMABLES].filter(b => b.on).map(b => b.name).join(', ') || 'none';
+  const procs = mhItem().name === 'Ironfoe' ? `Ironfoe: ${CFG.ironfoeChance * 100}% chance on main hand hit for 2 extra attacks. `
+    : CFG.weaponmasterExtra ? `Weaponmaster with a sword: ${Math.round(CFG.weaponmasterExtra * 100)}% chance on main hand hit for an extra attack. ` : '';
   $('tab-gear').innerHTML =
     (CUSTOM.on ? `<h2>Custom stats are active (Stats tab): the gear below is not used for stats.</h2>` : '') +
     `<div class="statgrid">` +
       stat('Attack power (buffed)', CFG.ap) +
-      stat('Crit chance (Berserker Stance)', CFG.crit.toFixed(2) + '%') +
+      stat('Crit chance (buffed, Battle Stance)', CFG.crit.toFixed(2) + '%') +
       stat('Hit chance', '+' + CFG.hit + '%') +
       stat('Strength', STATS.str) + stat('Agility', STATS.agi) +
     `</div>` +
     `<table><tr><th>Slot</th><th></th><th>Item</th><th>Stats used by the sim</th></tr>${GEAR.map(row).join('')}</table>` +
-    `<footer>Gear and enchants from the MythicSim WoW Forever DPS Warrior tier-list preset (pre-raid, both trinket slots empty). ` +
+    `<footer>Gear and enchants from the MythicSim WoW Forever ${SPEC.preset} tier-list preset (pre-raid, both trinket slots empty). ` +
     `${BASE.race} warrior, base ${BASE.str} Strength / ${BASE.agi} Agility. Attack power = ${BASE.ap} base + 2 per Strength + gear + raid buffs. ` +
-    `Crit = Agility / 20 + gear + 5% Cruelty + 3% Berserker Stance + 2% Sword Specialization (Human, sword equipped) + buffs. Active buffs and consumables: ${active}. Boss armor after debuffs: ${CFG.targetArmor} (${((1 - CFG.armorMult) * 100).toFixed(1)}% damage reduction). ` +
-    `Crusader: about 1 proc per minute per weapon, +100 Strength for 15 sec. Ironfoe: ${CFG.ironfoeChance * 100}% chance on main hand hit for 2 extra attacks. ` +
+    `Crit = Agility / 20 + gear + ${T('Cruelty')}% Cruelty + 2% Sword Specialization (Human, sword equipped) + buffs; Berserker Stance adds 3% more. Active buffs and consumables: ${active}. Boss armor after debuffs: ${CFG.targetArmor} (${((1 - CFG.armorMult) * 100).toFixed(1)}% damage reduction). ` +
+    `Crusader: about 1 proc per minute per weapon, +100 Strength for 15 sec. ${procs}` +
     `No world buffs. Stamina, armor and other defensive stats are omitted.</footer>`;
 }
-renderGearTab();
 
 // --- Stats tab: custom character stats, independent of the gear list ---
 function renderResultStats() {
   const stat = (label, value) => `<div class="stat"><b>${value}</b>${label}</div>`;
   $('stats-result').innerHTML =
-    stat('Attack power (buffed)', CFG.ap) + stat('Crit chance (buffed)', CFG.crit.toFixed(2) + '%') +
+    stat('Attack power (buffed)', CFG.ap) + stat('Crit chance (buffed, Battle Stance)', CFG.crit.toFixed(2) + '%') +
     stat('Hit chance', '+' + CFG.hit + '%') + stat('Strength (buffed)', STATS.str) + stat('Agility (buffed)', STATS.agi);
 }
+const FIELDS = [
+  ['str', 'Strength', 1, 0, 2000], ['agi', 'Agility', 1, 0, 2000], ['ap', 'Attack power', 1, 0, 10000],
+  ['crit', 'Crit chance %', 0.01, 0, 100], ['hit', 'Hit chance %', 0.1, 0, 50],
+  ['mhMin', 'Main hand min damage', 1, 1, 2000], ['mhMax', 'Main hand max damage', 1, 1, 2000], ['mhSpeed', 'Main hand speed', 0.1, 1, 4],
+  ['ohMin', 'Off hand min damage', 1, 0, 2000], ['ohMax', 'Off hand max damage', 1, 0, 2000], ['ohSpeed', 'Off hand speed (0 for none)', 0.1, 0, 4],
+];
+function fillStatsTab() {
+  $('custom-on').checked = CUSTOM.on;
+  $('custom-fields').classList.toggle('off', !CUSTOM.on);
+  $('tab-stats').querySelectorAll('input[data-k]').forEach(el => { el.value = CUSTOM[el.dataset.k]; });
+}
 {
-  const FIELDS = [
-    ['str', 'Strength', 1, 0, 2000], ['agi', 'Agility', 1, 0, 2000], ['ap', 'Attack power', 1, 0, 10000],
-    ['crit', 'Crit chance %', 0.01, 0, 100], ['hit', 'Hit chance %', 0.1, 0, 50],
-    ['mhMin', 'Main hand min damage', 1, 1, 2000], ['mhMax', 'Main hand max damage', 1, 1, 2000], ['mhSpeed', 'Main hand speed', 0.1, 1, 4],
-    ['ohMin', 'Off hand min damage', 1, 1, 2000], ['ohMax', 'Off hand max damage', 1, 1, 2000], ['ohSpeed', 'Off hand speed', 0.1, 1, 4],
-  ];
   const tab = $('tab-stats');
   tab.innerHTML =
     `<label class="custom-toggle"><input type="checkbox" id="custom-on"> Use custom stats instead of the gear list</label>` +
@@ -1014,15 +1191,10 @@ function renderResultStats() {
     `</div>` +
     `<button class="plain-btn" id="custom-copy">Copy current gear into the fields</button>` +
     `<h2>Resulting stats in the sim</h2><div class="statgrid" id="stats-result"></div>` +
-    `<footer>Enter your unbuffed character-sheet values: attack power including the part from Strength, and crit as shown in Berserker Stance with talents. Raid buffs and consumables from the left panel are added on top; Strength and Agility are only used to work out what those buffs add. Weapon procs (Crusader, Ironfoe) and talents stay as they are. Changes apply immediately and are saved in this browser.</footer>`;
+    `<footer>Enter your unbuffed character-sheet values: attack power including the part from Strength, and crit as shown in Battle Stance with talents. Raid buffs and consumables from the left panel are added on top; Strength and Agility are only used to work out what those buffs add. Set the off-hand speed to 0 for a two-handed weapon. Weapon procs and talents stay as they are. Changes apply immediately and are saved in this browser, separately for each spec.</footer>`;
 
-  const fill = () => {
-    $('custom-on').checked = CUSTOM.on;
-    $('custom-fields').classList.toggle('off', !CUSTOM.on);
-    tab.querySelectorAll('input[data-k]').forEach(el => { el.value = CUSTOM[el.dataset.k]; });
-  };
   const apply = () => {
-    try { localStorage.setItem(CUSTOM_STORE, JSON.stringify(CUSTOM)); } catch {}
+    store.set('warriorSimCustomStats_' + SPEC_ID, CUSTOM);
     $('custom-fields').classList.toggle('off', !CUSTOM.on);
     applySetup(); renderGearTab(); renderResultStats();
   };
@@ -1034,10 +1206,8 @@ function renderResultStats() {
     CUSTOM[f[0]] = Math.min(f[4], Math.max(f[3], v));
     apply();
   });
-  $('custom-fields').addEventListener('change', fill);   // show the clamped value once editing is done
-  $('custom-copy').addEventListener('click', () => { Object.assign(CUSTOM, gearSheet()); fill(); apply(); });
-  fill();
-  renderResultStats();
+  $('custom-fields').addEventListener('change', fillStatsTab);   // show the clamped value once editing is done
+  $('custom-copy').addEventListener('click', () => { Object.assign(CUSTOM, gearSheet()); fillStatsTab(); apply(); });
 }
 
 // --- Setup panel: raid buffs, consumables, boss debuffs ---
@@ -1066,91 +1236,90 @@ function renderResultStats() {
 }
 
 // --- Talents tab ---
-{
-  // WoW Forever beta trees (51 points at level 60). Points follow the MythicSim DPS Warrior preset (18 / 31 / 2).
-  // [name, points, max, row, col, icon, description at max rank, simulated, prerequisite, new in Forever]
-  const NEW = true;
-  const TREES = [
-    { name: 'Arms', talents: [
-      ['Improved Heroic Strike', 2, 3, 1, 1, 'ability_rogue_ambush', 'Heroic Strike costs 1 less rage per point (13 at 2/3).', true],
-      ['Deflection', 0, 5, 1, 2, 'ability_parry', '+5% parry chance.'],
-      ['Improved Rend', 3, 3, 1, 3, 'ability_gouge', '+35% Rend bleed damage.'],
-      ['Improved Charge', 0, 2, 2, 1, 'ability_warrior_charge', 'Charge generates 6 more rage.'],
-      ['Improved Tactical Mastery', 5, 5, 2, 2, 'spell_nature_enchantarmor', 'Retain an additional 15 rage when changing stances (25 total).', true],
-      ['Improved Overpower', 2, 2, 2, 4, 'inv_sword_05', '+50% Overpower crit chance.', true],
-      ['Anger Management', 1, 1, 3, 2, 'spell_holy_blessingofstamina', 'Generates 1 rage every 3 sec in combat; 30% slower rage decay out of combat.', true, 'Improved Tactical Mastery'],
-      ['Deep Wounds', 3, 3, 3, 3, 'ability_backstab', 'Crits bleed for 60% of average weapon damage over 12 sec; repeat crits roll the remaining damage into the new bleed.', true, 'Improved Rend'],
-      ['Spearing Strike', 0, 1, 4, 1, 'inv_spear_01', 'Deals 40% weapon damage, plus 80% more against Giants, Dragonkin and mounted targets.', false, null, NEW],
-      ['Two-Handed Weapon Specialization', 0, 3, 4, 2, 'inv_axe_09', '+3% damage with two-handed weapons.'],
-      ['Impale', 2, 2, 4, 3, 'ability_searingarrow', '+20% crit damage bonus on abilities.', true],
-      ['Bloodthrill', 0, 5, 5, 1, 'inv_sword_01', 'Main hand attacks on targets with your Rend have a 20% chance to enable Overpower.', false, null, NEW],
-      ['Sweeping Strikes', 0, 1, 5, 2, 'ability_rogue_slicedice', 'Your next 5 melee attacks strike an additional nearby opponent.'],
-      ['Weaponmaster', 0, 5, 5, 3, 'garrison_weaponupgrade', 'Axe/Polearm: +5% crit. Mace/Staff: ignore 15% armor. Sword: 5% chance for an extra attack.', false, null, NEW],
-      ['Improved Slam', 0, 2, 6, 1, 'ability_warrior_decisivestrike', 'Slam casts 0.5 sec faster, no longer delays your swing, and its cooldown is reduced by 3 sec.'],
-      ['Improved Hamstring', 0, 3, 6, 3, 'ability_shockwave', 'Hamstring has a 15% chance to immobilize for 5 sec.'],
-      ['Mortal Strike', 0, 1, 7, 2, 'ability_warrior_savageblow', 'Weapon damage plus 85; reduces healing on the target by 50% for 10 sec.', false, 'Sweeping Strikes'],
-    ]},
-    { name: 'Fury', talents: [
-      ['Booming Voice', 0, 5, 1, 2, 'spell_nature_purge', '+50% shout area and 25% lower shout rage cost.'],
-      ['Cruelty', 5, 5, 1, 3, 'ability_rogue_eviscerate', '+5% melee crit chance.', true],
-      ['Lingering Rage', 3, 5, 2, 2, 'ability_warrior_secondwind', 'Rage starts decaying 10 sec later after leaving combat.', false, null, NEW],
-      ['Unbridled Wrath', 5, 5, 2, 3, 'spell_nature_stoneclawtotem', '60% chance to generate 1 extra rage when you deal melee weapon damage.', true],
-      ['Furious Precision', 3, 3, 3, 1, 'ability_warrior_incite', '+10% hit chance with off-hand attacks.', true, null, NEW],
-      ['Piercing Howl', 0, 1, 3, 2, 'spell_shadow_deathscream', 'Dazes enemies within 10 yards for 6 sec.'],
-      ['Blood Craze', 0, 3, 3, 3, 'spell_shadow_summonimp', 'Regenerate health after being crit or taking a heavy hit.'],
-      ['Dual Wield Specialization', 5, 5, 4, 1, 'ability_dualwield', '+25% off-hand damage and +50% rage from off-hand attacks.', true],
-      ['Raging Blows', 1, 1, 4, 2, 'ability_whirlwind', 'Cleave and Whirlwind cost 3 less rage.', true, null, NEW],
-      ['Enrage', 0, 5, 4, 3, 'spell_shadow_unholyfrenzy', '30% chance for +10% Physical damage for 12 sec after taking a damaging attack.'],
-      ['Improved Execute', 2, 2, 4, 4, 'inv_sword_48', 'Execute costs 5 less rage (10).', true],
-      ['Improved Berserker Rage', 0, 2, 5, 1, 'spell_nature_ancestralguardian', 'Berserker Rage instantly generates 10 rage and removes movement impairing effects.', true],
-      ['Death Wish', 1, 1, 5, 2, 'spell_shadow_deathpact', '+20% Physical damage and Fear immunity for 30 sec; damage taken +5%.', true],
-      ['Improved Intercept', 0, 2, 5, 4, 'ability_rogue_sprint', 'Intercept cooldown reduced by 10 sec.'],
-      ['Flurry', 5, 5, 6, 2, 'ability_ghoulfrenzy', '+25% attack speed for your next 3 swings after a melee crit.', true, 'Death Wish'],
-      ['Gore Drinker', 0, 2, 6, 3, 'racial_troll_berserk', 'Enrage, Berserker Rage, Bloodrage, Death Wish and Bloodthirst make your next 3 melee attacks restore 1% health.', false, 'Enrage', NEW],
-      ['Bloodthirst', 1, 1, 7, 2, 'spell_nature_bloodlust', 'Instant attack for 45% of attack power plus 48 (rank 4); +10% movement speed for 10 sec.', true],
-    ]},
-    { name: 'Protection', talents: [
-      ['Improved Bloodrage', 2, 2, 1, 1, 'ability_racial_bloodrage', 'Bloodrage generates 50% more rage.', true],
-      ['Shield Specialization', 0, 5, 1, 2, 'inv_shield_06', '+5% block chance; blocks generate 5 rage.'],
-      ['Iron Will', 0, 5, 1, 3, 'spell_magic_magearmor', 'Stun and Fear effects on you last 15% less.'],
-      ['Anticipation', 0, 5, 2, 1, 'spell_nature_mirrorimage', '+20 Defense skill.'],
-      ['Improved Revenge', 0, 3, 2, 3, 'ability_warrior_revenge', '+60% Revenge damage.'],
-      ['Improved Thunder Clap', 0, 3, 2, 4, 'ability_thunderclap', 'Thunder Clap costs 6 less rage.'],
-      ['Last Stand', 0, 1, 3, 1, 'spell_holy_ashestoashes', 'Temporarily gain 30% of maximum health for 20 sec.'],
-      ['Master of Defense', 0, 2, 3, 2, 'ability_warrior_shieldguard', 'Generate 5 rage when you dodge or parry with a shield equipped.', false, 'Shield Specialization', NEW],
-      ['Improved Disarm', 0, 3, 3, 3, 'ability_warrior_disarm', 'Disarm cooldown reduced by 20 sec.'],
-      ['Defiance', 0, 3, 3, 4, 'ability_warrior_innerrage', '+15% threat in Defensive Stance with a shield equipped.'],
-      ['Improved Sunder Armor', 0, 3, 4, 1, 'ability_warrior_sunder', 'Sunder Armor costs 3 less rage.'],
-      ['Vanguard', 0, 1, 4, 2, 'ability_warrior_shieldcharge', 'Charge is usable in Defensive Stance.', false, null, NEW],
-      ['Improved Shield Bash', 0, 2, 4, 3, 'ability_warrior_shieldbash', 'Shield Bash silences the target for 3 sec.'],
-      ['Improved Shield Wall', 0, 2, 5, 1, 'ability_warrior_shieldwall', 'Shield Wall cooldown reduced by 11 min.'],
-      ['Concussion Blow', 0, 1, 5, 2, 'ability_thunderbolt', 'Stuns the target for 5 sec.'],
-      ['Focused Rage', 0, 3, 5, 3, 'ability_warrior_focusedrage', 'Offensive abilities cost 3 less rage.', false, null, NEW],
-      ['Bastion', 0, 5, 6, 3, 'inv_shield_04', '+10% damage dealt while a shield is equipped.'],
-      ['Shield Slam', 0, 1, 7, 2, 'inv_shield_05', 'Slam the target with your shield; 50% chance to dispel 1 magic effect. Very high threat.', false, 'Concussion Blow'],
-    ]},
-  ];
+// WoW Forever beta trees (51 points at level 60). [name, max, row, col, icon, description at max rank, simulated, prerequisite, new in Forever]
+const NEW = true;
+const TREES = [
+  { name: 'Arms', talents: [
+    ['Improved Heroic Strike', 3, 1, 1, 'ability_rogue_ambush', 'Heroic Strike costs 1 less rage per point.', true],
+    ['Deflection', 5, 1, 2, 'ability_parry', '+5% parry chance.'],
+    ['Improved Rend', 3, 1, 3, 'ability_gouge', '+35% Rend bleed damage.', true],
+    ['Improved Charge', 2, 2, 1, 'ability_warrior_charge', 'Charge generates 6 more rage.'],
+    ['Improved Tactical Mastery', 5, 2, 2, 'spell_nature_enchantarmor', 'Retain an additional 15 rage when changing stances (25 total).', true],
+    ['Improved Overpower', 2, 2, 4, 'inv_sword_05', '+50% Overpower crit chance.', true],
+    ['Anger Management', 1, 3, 2, 'spell_holy_blessingofstamina', 'Generates 1 rage every 3 sec in combat; 30% slower rage decay out of combat.', true, 'Improved Tactical Mastery'],
+    ['Deep Wounds', 3, 3, 3, 'ability_backstab', 'Crits bleed for 60% of average weapon damage over 12 sec; repeat crits roll the remaining damage into the new bleed.', true, 'Improved Rend'],
+    ['Spearing Strike', 1, 4, 1, 'inv_spear_01', 'Deals 40% weapon damage, plus 80% more against Giants, Dragonkin and mounted targets. 15 rage, 20 sec cooldown, Battle Stance.', true, null, NEW],
+    ['Two-Handed Weapon Specialization', 3, 4, 2, 'inv_axe_09', '+3% damage with two-handed weapons.', true],
+    ['Impale', 2, 4, 3, 'ability_searingarrow', '+20% crit damage bonus on abilities.', true],
+    ['Bloodthrill', 5, 5, 1, 'inv_sword_01', 'Main hand attacks on targets with your Rend have a 20% chance to enable Overpower for 6 sec.', true, null, NEW],
+    ['Sweeping Strikes', 1, 5, 2, 'ability_rogue_slicedice', 'Your next 5 melee attacks strike an additional nearby opponent. Nothing to hit on a single dummy.'],
+    ['Weaponmaster', 5, 5, 3, 'garrison_weaponupgrade', 'Axe/Polearm: +5% crit. Mace/Staff: ignore 15% armor. Sword: 5% chance for an extra attack.', true, null, NEW],
+    ['Improved Slam', 2, 6, 1, 'ability_warrior_decisivestrike', 'Slam casts 0.5 sec faster with a 0.5 sec shorter global cooldown, no longer delays your swing, and its cooldown is reduced by 3 sec.', true],
+    ['Improved Hamstring', 3, 6, 3, 'ability_shockwave', 'Hamstring has a 15% chance to immobilize for 5 sec.'],
+    ['Mortal Strike', 1, 7, 2, 'ability_warrior_savageblow', 'Weapon damage plus 160 (rank 4); reduces healing on the target by 50% for 10 sec. 30 rage, 6 sec cooldown.', true, 'Sweeping Strikes'],
+  ]},
+  { name: 'Fury', talents: [
+    ['Booming Voice', 5, 1, 2, 'spell_nature_purge', '+50% shout area and 25% lower shout rage cost.'],
+    ['Cruelty', 5, 1, 3, 'ability_rogue_eviscerate', '+5% melee crit chance.', true],
+    ['Lingering Rage', 5, 2, 2, 'ability_warrior_secondwind', 'Rage starts decaying 10 sec later after leaving combat.', false, null, NEW],
+    ['Unbridled Wrath', 5, 2, 3, 'spell_nature_stoneclawtotem', '60% chance to generate 1 extra rage when you deal melee weapon damage, 2 with a two-handed weapon.', true],
+    ['Furious Precision', 3, 3, 1, 'ability_warrior_incite', '+10% hit chance with off-hand attacks.', true, null, NEW],
+    ['Piercing Howl', 1, 3, 2, 'spell_shadow_deathscream', 'Dazes enemies within 10 yards for 6 sec.'],
+    ['Blood Craze', 3, 3, 3, 'spell_shadow_summonimp', 'Regenerate health after being crit or taking a heavy hit.'],
+    ['Dual Wield Specialization', 5, 4, 1, 'ability_dualwield', '+25% off-hand damage and +50% rage from off-hand attacks.', true],
+    ['Raging Blows', 1, 4, 2, 'ability_whirlwind', 'Cleave and Whirlwind cost 3 less rage.', true, null, NEW],
+    ['Enrage', 5, 4, 3, 'spell_shadow_unholyfrenzy', '30% chance for +10% Physical damage for 12 sec after taking a damaging attack.'],
+    ['Improved Execute', 2, 4, 4, 'inv_sword_48', 'Execute costs 5 less rage (10).', true],
+    ['Improved Berserker Rage', 2, 5, 1, 'spell_nature_ancestralguardian', 'Berserker Rage instantly generates 10 rage and removes movement impairing effects.', true],
+    ['Death Wish', 1, 5, 2, 'spell_shadow_deathpact', '+20% Physical damage and Fear immunity for 30 sec; damage taken +5%.', true],
+    ['Improved Intercept', 2, 5, 4, 'ability_rogue_sprint', 'Intercept cooldown reduced by 10 sec.'],
+    ['Flurry', 5, 6, 2, 'ability_ghoulfrenzy', '+25% attack speed for your next 3 swings after a melee crit.', true, 'Death Wish'],
+    ['Gore Drinker', 2, 6, 3, 'racial_troll_berserk', 'Enrage, Berserker Rage, Bloodrage, Death Wish and Bloodthirst make your next 3 melee attacks restore 1% health.', false, 'Enrage', NEW],
+    ['Bloodthirst', 1, 7, 2, 'spell_nature_bloodlust', 'Instant attack for 45% of attack power plus 48 (rank 4); +10% movement speed for 10 sec.', true],
+  ]},
+  { name: 'Protection', talents: [
+    ['Improved Bloodrage', 2, 1, 1, 'ability_racial_bloodrage', 'Bloodrage generates 50% more rage.', true],
+    ['Shield Specialization', 5, 1, 2, 'inv_shield_06', '+5% block chance; blocks generate 5 rage.'],
+    ['Iron Will', 5, 1, 3, 'spell_magic_magearmor', 'Stun and Fear effects on you last 15% less.'],
+    ['Anticipation', 5, 2, 1, 'spell_nature_mirrorimage', '+20 Defense skill.'],
+    ['Improved Revenge', 3, 2, 3, 'ability_warrior_revenge', '+60% Revenge damage.'],
+    ['Improved Thunder Clap', 3, 2, 4, 'ability_thunderclap', 'Thunder Clap costs 6 less rage.'],
+    ['Last Stand', 1, 3, 1, 'spell_holy_ashestoashes', 'Temporarily gain 30% of maximum health for 20 sec.'],
+    ['Master of Defense', 2, 3, 2, 'ability_warrior_shieldguard', 'Generate 5 rage when you dodge or parry with a shield equipped.', false, 'Shield Specialization', NEW],
+    ['Improved Disarm', 3, 3, 3, 'ability_warrior_disarm', 'Disarm cooldown reduced by 20 sec.'],
+    ['Defiance', 3, 3, 4, 'ability_warrior_innerrage', '+15% threat in Defensive Stance with a shield equipped.'],
+    ['Improved Sunder Armor', 3, 4, 1, 'ability_warrior_sunder', 'Sunder Armor costs 3 less rage.'],
+    ['Vanguard', 1, 4, 2, 'ability_warrior_shieldcharge', 'Charge is usable in Defensive Stance.', false, null, NEW],
+    ['Improved Shield Bash', 2, 4, 3, 'ability_warrior_shieldbash', 'Shield Bash silences the target for 3 sec.'],
+    ['Improved Shield Wall', 2, 5, 1, 'ability_warrior_shieldwall', 'Shield Wall cooldown reduced by 11 min.'],
+    ['Concussion Blow', 1, 5, 2, 'ability_thunderbolt', 'Stuns the target for 5 sec.'],
+    ['Focused Rage', 3, 5, 3, 'ability_warrior_focusedrage', 'Offensive abilities cost 3 less rage.', false, null, NEW],
+    ['Bastion', 5, 6, 3, 'inv_shield_04', '+10% damage dealt while a shield is equipped.'],
+    ['Shield Slam', 1, 7, 2, 'inv_shield_05', 'Slam the target with your shield; 50% chance to dispel 1 magic effect. Very high threat.', false, 'Concussion Blow'],
+  ]},
+];
 
-  const treePoints = tree => tree.talents.reduce((n, t) => n + t[1], 0);
+function renderTalentsTab() {
+  const treePoints = tree => tree.talents.reduce((n, t) => n + T(t[0]), 0);
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
   const treeHtml = tree => {
     let cells = '';
-    for (const [name, pts, max, row, col, icon, desc, sim, req, isNew] of tree.talents) {
+    for (const [name, max, row, col, icon, desc, sim, req, isNew] of tree.talents) {
+      const pts = T(name);
       const state = pts === 0 ? 'empty' : pts === max ? 'full' : 'partial';
       if (req) {
         const from = tree.talents.find(t => t[0] === req);
-        cells += `<div class="tlink ${pts ? 'on' : ''}" style="grid-column:${col};grid-row:${from[3]} / ${row + 1}"></div>`;
+        cells += `<div class="tlink ${pts ? 'on' : ''}" style="grid-column:${col};grid-row:${from[2]} / ${row + 1}"></div>`;
       }
-      const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
       cells += `<div class="tnode ${state}" style="grid-column:${col};grid-row:${row};background-image:url(${iconUrl(icon)})" ` +
         `data-name="${esc(name)}" data-pts="${pts}" data-max="${max}" data-desc="${esc(desc)}" data-sim="${sim ? 1 : ''}" data-isnew="${isNew ? 1 : ''}">` +
         (isNew ? '<i>new</i>' : '') + `<span>${pts}/${max}</span></div>`;
     }
     return `<div class="tree"><h2>${tree.name} <span class="dim">(${treePoints(tree)})</span></h2><div class="tgrid">${cells}</div></div>`;
   };
-
   $('tab-talents').innerHTML =
     `<div class="trees">${TREES.map(treeHtml).join('')}</div>` +
-    `<footer>${TREES.map(treePoints).join(' / ')} (51 points). WoW Forever beta talent trees; talents are fixed. ` +
+    `<footer>${TREES.map(treePoints).join(' / ')} (51 points). WoW Forever beta talent trees; the build follows the MythicSim ${SPEC.preset} preset and is fixed. ` +
     `Hover a talent to see what it does and whether this simulation models it.</footer>`;
 }
 
@@ -1184,8 +1353,8 @@ function renderResultStats() {
   });
 }
 
-// --- Keybinds: editable, saved in this browser ---
-const KEY_STORE = 'warriorSimKeybinds';
+// --- Keybinds: editable, saved in this browser, separately for each spec ---
+const keyStore = () => 'warriorSimKeybinds_' + SPEC_ID;
 let rebinding = false, rebindTarget = null;
 // Browser shortcuts a page cannot take over: binding them would close or open tabs instead of using the ability
 const RESERVED_KEYS = ['Ctrl+w', 'Ctrl+t', 'Ctrl+n', 'Ctrl+Shift+w', 'Ctrl+Shift+t', 'Ctrl+Shift+n'];
@@ -1215,14 +1384,19 @@ function keyLabel(k) {
 }
 
 function showKeys() {
-  for (const a of ABILITIES) a.keyEl.textContent = keyLabel(a.key);
+  for (const a of barAbilities()) a.keyEl.textContent = keyLabel(a.key);
 }
 function saveKeys() {
-  try { localStorage.setItem(KEY_STORE, JSON.stringify(Object.fromEntries(ABILITIES.map(a => [a.id, a.key])))); } catch {}
+  store.set(keyStore(), Object.fromEntries(barAbilities().map(a => [a.id, a.key])));
+}
+function loadKeys() {
+  const saved = store.get(keyStore(), {});
+  for (const a of barAbilities()) a.key = typeof saved[a.id] === 'string' ? saved[a.id] : a.defaultKey;
+  showKeys();
 }
 function selectRebind(a) {
   rebindTarget = a;
-  for (const b of ABILITIES) b.el.classList.toggle('rebind-target', b === a);
+  for (const b of barAbilities()) b.el.classList.toggle('rebind-target', b === a);
   $('rebind-hint').classList.remove('warn');
   $('rebind-hint').textContent = a ? `Press a key for ${a.name}, with Shift or Ctrl if you like (Esc to cancel). ${RESERVED_NOTE}`
     : `Click an ability, then press the key you want. ${RESERVED_NOTE}`;
@@ -1238,15 +1412,9 @@ function setRebinding(on) {
 }
 $('rebind').addEventListener('click', () => setRebinding(!rebinding));
 $('rebind-reset').addEventListener('click', () => {
-  for (const a of ABILITIES) a.key = a.defaultKey;
+  for (const a of barAbilities()) a.key = a.defaultKey;
   saveKeys(); showKeys(); selectRebind(null);
 });
-
-try {
-  const saved = JSON.parse(localStorage.getItem(KEY_STORE) || '{}');
-  for (const a of ABILITIES) if (typeof saved[a.id] === 'string') a.key = saved[a.id];
-} catch {}
-showKeys();
 
 document.addEventListener('keydown', e => {
   if (e.repeat || e.altKey || e.metaKey || e.target.tagName === 'INPUT') return;
@@ -1262,18 +1430,32 @@ document.addEventListener('keydown', e => {
       return;
     }
     // A key can only be bound to one ability: take it away from whichever had it
-    for (const a of ABILITIES) if (a.key === key) a.key = '';
+    for (const a of barAbilities()) if (a.key === key) a.key = '';
     rebindTarget.key = key;
     saveKeys(); showKeys(); selectRebind(null);
     return;
   }
-  const a = ABILITIES.find(a => a.key && a.key === key);
+  const a = barAbilities().find(a => a.key && a.key === key);
   if (a) { e.preventDefault(); press(a); }
 });
 
-$('footer').textContent =
-  `WoW Forever dual wield fury in Berserker Stance against a level 63 boss. ` +
-  `Press Start fight, then use the keys shown on the buttons, or click, to use abilities. See the Gear and Talents tabs for the setup.`;
+// --- Spec switch ---
+function setSpec(id) {
+  SPEC_ID = id; SPEC = SPECS[id]; GEAR = SPEC.gear; CUSTOM = CUSTOM_ALL[id];
+  store.set('warriorSimSpec', id);
+  applySetup();
+  if (rebinding) setRebinding(false);
+  buildBar(); loadKeys();
+  reset();
+  document.querySelectorAll('#specbar button').forEach(b => b.classList.toggle('active', b.dataset.spec === id));
+  document.querySelector('h1').textContent = `WoW Forever — ${SPEC.title} (60)`;
+  document.title = `WoW Forever ${SPEC.title} Simulator`;
+  $('ohswing').style.display = CFG.oh ? '' : 'none';
+  $('footer').textContent = `${SPEC.footer} Press Start fight, then use the keys shown on the buttons, or click, to use abilities. See the Gear and Talents tabs for the setup.`;
+  renderGearTab(); renderTalentsTab(); fillStatsTab(); renderResultStats();
+}
+document.querySelectorAll('#specbar button').forEach(b => b.addEventListener('click', () => { if (b.dataset.spec !== SPEC_ID) setSpec(b.dataset.spec); }));
+setSpec(SPEC_ID);
 
 function render() {
   arenaEl.classList.toggle('idle', !S.started);
@@ -1285,17 +1467,19 @@ function render() {
   $('ragefill').style.width = S.rage + '%';
   $('ragetext').textContent = Math.floor(S.rage) + ' / 100';
   $('mhbar').style.width = S.mhProg * 100 + '%';
-  $('ohbar').style.width = S.ohProg * 100 + '%';
+  $('ohbar').style.width = (CFG.oh ? S.ohProg * 100 : 0) + '%';
+  $('castbar').style.width = S.cast ? Math.min(1, 1 - (S.cast.until - S.t) / S.cast.total) * 100 + '%' : '0';
+  $('casttext').textContent = S.cast ? `${S.cast.ability.name} ${fmtTime(Math.max(0, S.cast.until - S.t))}` : '';
 
-  for (const a of ABILITIES) {
+  for (const a of barAbilities()) {
     const cdLeft = (S.ready[a.id] || 0) - S.t;
     const gcdLeft = a.gcd ? S.gcdUntil - S.t : 0;
     let frac = 0;
-    if (cdLeft > 0 && cdLeft >= gcdLeft) frac = cdLeft / a.cd;
+    if (cdLeft > 0 && cdLeft >= gcdLeft) frac = cdLeft / cdOf(a);
     else if (gcdLeft > 0) frac = gcdLeft / CFG.gcd;
     a.mask.style.height = frac * 100 + '%';
     a.cdText.textContent = cdLeft > 0 ? fmtTime(cdLeft) : '';
-    a.el.classList.toggle('norage', !S.started || S.rage < a.cost || !!(a.usable && !a.usable()));
+    a.el.classList.toggle('norage', !S.started || S.rage < a.cost() || !!(a.usable && !a.usable()));
     a.el.classList.toggle('queued', S.queued === a.id);
     if (a.proc) a.el.classList.toggle('proc', S.started && a.usable());
   }
@@ -1309,7 +1493,9 @@ function render() {
   if (S.t < S.buffs.crusOH) buffs.push(['spell_holy_blessingofstrength', `Holy Strength (off hand) ${fmtTime(S.buffs.crusOH - S.t)}`]);
   if (S.t < S.buffs.potion) buffs.push(['inv_potion_41', `Mighty Rage ${fmtTime(S.buffs.potion - S.t)}`]);
   if (S.flurry > 0) buffs.push(['ability_ghoulfrenzy', `Flurry (${S.flurry})`]);
+  if (S.rendTicks > 0) buffs.push(['ability_gouge', `Rend ${fmtTime(S.rendNext + (S.rendTicks - 1) * CFG.rendEvery - S.t)}`]);
   if (S.woundTicks > 0) buffs.push(['ability_backstab', `Deep Wounds (${S.woundTicks})`]);
+  if (S.t < S.overpowerUntil) buffs.push(['ability_meleedamage', `Overpower ready ${fmtTime(S.overpowerUntil - S.t)}`]);
   const html = buffs.map(([icon, text]) => `<div class="buff"><img src="${iconUrl(icon)}" alt="">${text}</div>`).join('');
   if ($('buffs').innerHTML !== html) $('buffs').innerHTML = html;
 
